@@ -1171,7 +1171,7 @@ _showPlayerServices(id) {
 
 	new data[1]; data[0] = id;
 	formatex(szTemp, charsmax(szTemp),
-		"SELECT `service`, FROM_UNIXTIME(`expire`) AS `expire` FROM `%splayers_services` AS ps \
+		"SELECT s.name AS `service`, FROM_UNIXTIME(ps.expire) AS `expire`, ps.expire AS `expire_num` FROM `%splayers_services` AS ps \
 		LEFT JOIN `%sservices` AS s ON ps.service = s.id \
 		WHERE ps.server = '%d' \
 		AND ((ps.type = '%d' AND ps.auth_data = '%s') \
@@ -1194,7 +1194,11 @@ public getPlayerServices(FailState, Handle:Query, Error[], Errorcode, data[], da
 	while(SQL_MoreResults(Query)) {
 		new service[MAX_ID+1], expire[32+1], item_text[128];
 		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "service"), service, charsmax(service));
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "expire"), expire, charsmax(expire));
+		
+		if( SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "expire_num")) == -1 )
+			copy(expire, charsmax(expire), "Nigdy");
+		else
+			SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "expire"), expire, charsmax(expire));
 		
 		formatex(item_text, charsmax(item_text), "%s - wygasa: %s", service, expire);
 		menu_additem(menu, item_text);
@@ -1202,8 +1206,10 @@ public getPlayerServices(FailState, Handle:Query, Error[], Errorcode, data[], da
 		SQL_NextRow(Query);
 	}
 	
-	if( menu_items(menu) )
+	if( menu_items(menu) ) {
+		menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
 		menu_display(id, menu);
+	}
 	else
 		client_print_color(id, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s.", PREFIX, sklep_komenda);
 }
