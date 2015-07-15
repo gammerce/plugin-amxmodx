@@ -1633,7 +1633,7 @@ public log_to_sql(text[], text_len) {
 	#endif
 	
 	format(text, text_len, "%s. Serwer: %d", text, server_id);
-	SQL_QuoteString(Empty_Handle, text, text_len, text);
+	escape(text, text_len);
 	
 	formatex(szTemp, charsmax(szTemp), "INSERT INTO `%slogs` (text) VALUES ('%s')", TABLE_PREFIX, text);
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "IgnoreHandle", szTemp);
@@ -1698,12 +1698,12 @@ public getServerData(FailState, Handle:Query, Error[], Errorcode) {
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "IgnoreHandle", szTemp);
 	
 	// Sprawdzanie dostepnosci usług
-	new service_id[MAX_NAME+2+1], ids[512], ids_len = 0, ids_max = charsmax(ids);
+	new service_id[MAX_NAME+1], service_id_space[MAX_NAME+2+1], ids[512], ids_len = 0, ids_max = charsmax(ids);
 	for(new i = 0; i < ArraySize(service_ids); ++i) {
 		ArrayGetString(service_ids, i, service_id, charsmax(service_id));
-		format(service_id, charsmax(service_id), " %s ", service_id);
+		formatex(service_id_space, charsmax(service_id_space), " %s ", service_id);
 		
-		if( containi(szServices, service_id) != -1 ) {
+		if( containi(szServices, service_id_space) != -1 ) {
 			if( ids_len )
 				ids_len += formatex(ids[ids_len], ids_max-ids_len, ",");
 				
