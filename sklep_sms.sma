@@ -1024,7 +1024,7 @@ public kodZwrotny(id) {
 	StringURLEncode(ip, u_ip, charsmax(u_ip));
 	
 	formatex(szUrl, charsmax(szUrl), 
-		"%sservers_stuff.php?action=purchase_service&key=%s&service=%s&type=%d&auth_data=%s&password=%s&method=sms&server=%d&transaction_service=%s&sms_code=%s&tariff=%d&uid=0&ip=%s&platform=engine_amxx&language=polish", 
+		"%sservers_stuff.php?action=purchase_service&key=%s&service=%s&type=%d&auth_data=%s&password=%s&method=sms&server=%d&transaction_service=%s&sms_code=%s&tariff=%d&uid=0&ip=%s&platform=cs16&language=polish", 
 		shop_url_add, st_random_key_md5, u_service_id, b_types[id], u_auth_data, u_password, server_id, u_sms_service, u_sms_code, price[pTARIFF], u_ip
 	);
 	sendSocket(id, shop_url, szUrl, "purchase_service");
@@ -1620,7 +1620,7 @@ public log_to_sql(text[], text_len) {
 	#endif
 	
 	format(text, text_len, "%s. Serwer: %d", text, server_id);
-	SQL_QuoteString(Empty_Handle, text, text_len, text);
+	escape(text, text_len);
 	
 	formatex(szTemp, charsmax(szTemp), "INSERT INTO `%slogs` (text) VALUES ('%s')", TABLE_PREFIX, text);
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "IgnoreHandle", szTemp);
