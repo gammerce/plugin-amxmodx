@@ -4,7 +4,7 @@
 new const service_id[MAX_ID] = "vippro";
 #define PLUGIN "Sklep-SMS: Usluga VIP PRO"
 
-new szFlags[25];
+new szFlags[32+1];
 
 public plugin_init() {
 	register_plugin(PLUGIN, VERSION, "SeeK")
@@ -15,7 +15,7 @@ public plugin_cfg() {
 }
 
 public ss_service_data(name[],flags[]) {
-	copy(szFlags,sizeof szFlags,flags);
+	copy(szFlags, charsmax(szFlags), flags);
 }
 
 public ss_service_addingtolist(id) {

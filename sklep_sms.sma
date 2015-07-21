@@ -1179,7 +1179,7 @@ _showPlayerServices(id) {
 		OR (ps.type = '%d' AND ps.auth_data = '%s'))",
 		TABLE_PREFIX, TABLE_PREFIX, server_id, TYPE_NICK, name, TYPE_IP, ip, TYPE_SID, sid
 	);
-	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "getPlayerServices", szTemp, data, sizeof(data));
+	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "getPlayerServices", szTemp, data, sizeof data);
 }
 
 public getPlayerServices(FailState, Handle:Query, Error[], Errorcode, data[], data_size) {
