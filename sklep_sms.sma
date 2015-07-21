@@ -318,7 +318,14 @@ public plugin_cfg() {
 	new ip[22], port[10];
 	split(server_ip, ip, charsmax(ip), port, charsmax(port), ":");
 	
-	formatex(szTemp, charsmax(szTemp), "SELECT * FROM `%sservers` WHERE `ip` = '%s' AND `port` = '%s'", TABLE_PREFIX, ip, port);
+	formatex(szTemp, charsmax(szTemp),
+		"SELECT s.id, s.name, s.sms_service, CONCAT(' ', GROUP_CONCAT( ss.service_id SEPARATOR ' ' ), ' ') AS `services` \
+		FROM `%sservers` AS s \
+		LEFT JOIN `%sservers_services` AS ss ON ss.server_id = s.id \
+		WHERE s.ip = '%s' AND s.port = '%s' \
+		GROUP BY s.id",
+		TABLE_PREFIX, TABLE_PREFIX, ip, port
+	);
 	//log_to_file(LOG_FILE, szTemp);
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "getServerData", szTemp);
 	
@@ -1626,7 +1633,7 @@ public log_to_sql(text[], text_len) {
 	#endif
 	
 	format(text, text_len, "%s. Serwer: %d", text, server_id);
-	SQL_QuoteString(Empty_Handle, text, text_len, text);
+	escape(text, text_len);
 	
 	formatex(szTemp, charsmax(szTemp), "INSERT INTO `%slogs` (text) VALUES ('%s')", TABLE_PREFIX, text);
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "IgnoreHandle", szTemp);
@@ -1677,6 +1684,10 @@ public getServerData(FailState, Handle:Query, Error[], Errorcode) {
 	SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "sms_service"), sms_service, charsmax(sms_service));
 	if( strlen(sms_service) )
 		copy(st_sms_service, charsmax(st_sms_service), sms_service);
+		
+	// Pozyskanie uslug na serwerze
+	new szServices[512];
+	SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "services"), szServices, charsmax(szServices));
 	
 	// Pobranie ustawien sklepu
 	formatex(szTemp, charsmax(szTemp), "SELECT * FROM `%ssettings` WHERE `key` IN ('currency', 'shop_url', 'signature', 'sms_service', 'contact', 'vat', 'random_key', 'license_login', 'license_password')", TABLE_PREFIX);
@@ -1687,11 +1698,12 @@ public getServerData(FailState, Handle:Query, Error[], Errorcode) {
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "IgnoreHandle", szTemp);
 	
 	// Sprawdzanie dostepnosci usług
-	new service_id[MAX_NAME+1], ids[512], ids_len = 0, ids_max = charsmax(ids);
+	new service_id[MAX_NAME+1], service_id_space[MAX_NAME+2+1], ids[512], ids_len = 0, ids_max = charsmax(ids);
 	for(new i = 0; i < ArraySize(service_ids); ++i) {
 		ArrayGetString(service_ids, i, service_id, charsmax(service_id));
+		formatex(service_id_space, charsmax(service_id_space), " %s ", service_id);
 		
-		if( SQL_FieldNameToNum(Query, service_id) > -1 && SQL_ReadResult(Query, SQL_FieldNameToNum(Query, service_id)) ) {
+		if( containi(szServices, service_id_space) != -1 ) {
 			if( ids_len )
 				ids_len += formatex(ids[ids_len], ids_max-ids_len, ",");
 				
