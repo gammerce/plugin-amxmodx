@@ -23,15 +23,15 @@ public plugin_cfg() {
 
 public ss_service_chosen(id) {
 	if( !cod_get_user_class(id) ) {
-		client_print_color(id,Red,"^4[%s] ^1Musisz ^3wybrac klase^1, aby moc zakupic EXP.",PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1Musisz ^3wybrac klase^1, aby moc zakupic EXP.", PREFIX);
 		return SS_STOP;
 	}
 	
 	return SS_OK;
 }
 
-public ss_service_bought(id,amount) {
-	cod_set_user_xp(id,cod_get_user_xp(id)+amount);
+public ss_service_bought(id, amount) {
+	cod_set_user_xp(id, cod_get_user_xp(id)+amount);
 }
 
 // Zabezpieczenie, jezeli plugin jest odpalony na serwerze bez odpowiednich funkcji

@@ -19,8 +19,8 @@ public plugin_cfg() {
 	ss_register_service(service_id)
 }
 
-public ss_service_bought(id,amount) {
-	set_user_bm(id,get_user_bm(id)+amount);
+public ss_service_bought(id, amount) {
+	set_user_bm(id, get_user_bm(id)+amount);
 }
 
 // Zabezpieczenie, jezeli plugin jest odpalony na serwerze bez odpowiednich funkcji

@@ -21,12 +21,12 @@ public plugin_cfg() {
 }
 
 public ss_service_addingtolist(id) {	
-	client_print(id,print_chat,"[%s] Musisz odczekac tydzien od restartu leveli, aby moc zakupic EXP.",PREFIX);
+	client_print(id, print_chat, "[%s] Musisz odczekac tydzien od restartu leveli, aby moc zakupic EXP.", PREFIX);
 	return ITEM_DISABLED;
 }
 
-public ss_service_bought(id,amount) {
-	cod_set_user_xp(id,cod_get_user_xp(id)+amount);
+public ss_service_bought(id, amount) {
+	cod_set_user_xp(id, cod_get_user_xp(id)+amount);
 }
 
 // Zabezpieczenie, jezeli plugin jest odpalony na serwerze bez odpowiednich funkcji

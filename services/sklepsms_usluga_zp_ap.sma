@@ -19,8 +19,8 @@ public plugin_cfg() {
 	ss_register_service(service_id)
 }
 
-public ss_service_bought(id,amount) {
-	zp_set_user_ammo_packs(id,zp_get_user_ammo_packs(id)+amount);
+public ss_service_bought(id, amount) {
+	zp_set_user_ammo_packs(id, zp_get_user_ammo_packs(id)+amount);
 }
 
 // Zabezpieczenie, jezeli plugin jest odpalony na serwerze bez odpowiednich funkcji

@@ -36,19 +36,19 @@ public ss_service_addingtolist(id) {
 public ss_service_chosen(id) {
 	fromClass[id] = toClass[id] = currentClass[id] = fromClassExp[id] = 0;
 
-	new menu = menu_create("Z jakiej klasy?","fromClassMenu_handle")
+	new menu = menu_create("Z jakiej klasy?", "fromClassMenu_handle")
 	for(new i = 1; i <= cod_get_classes_num(); ++i) {
-		new name[64]
-		cod_get_class_name(i,name,sizeof(name))
+		new name[64+1];
+		cod_get_class_name(i, name, charsmax(name))
 		
-		menu_additem(menu,name)
+		menu_additem(menu, name)
 	}
 	
-	menu_setprop(menu, MPROP_BACKNAME, "Poprzednia strona");
-	menu_setprop(menu, MPROP_NEXTNAME, "Nastepna strona");
-	menu_setprop(menu,MPROP_EXITNAME,"Wyjdz")
+	menu_setprop(menu, MPROP_BACKNAME, "Poprzednia");
+	menu_setprop(menu, MPROP_NEXTNAME, "Nastepna");
+	menu_setprop(menu, MPROP_EXITNAME, "Wyjdz")
 	
-	menu_display(id,menu);
+	menu_display(id, menu);
 	
 	return SS_STOP;
 }
@@ -63,23 +63,23 @@ public fromClassMenu_handle(id, menu, item) {
 	// +1 poniewaz klasy zaczynaja sie od id: 1
 	fromClass[id] = item+1;
 		
-	new menu2 = menu_create("Na jaka klase?","toClassMenu_handle")
+	new menu2 = menu_create("Na jaka klase?", "toClassMenu_handle")
 	new menu_callback = menu_makecallback("toClassMenu_callback");
 	for(new i = 1; i <= cod_get_classes_num(); ++i) {
-		new name[64]
-		cod_get_class_name(i,name,sizeof(name))
+		new name[64+1]
+		cod_get_class_name(i, name, charsmax(name))
 			
-		menu_additem(menu2,name,"",0,menu_callback)
+		menu_additem(menu2, name, "", 0, menu_callback)
 	}
 		
-	menu_setprop(menu2, MPROP_BACKNAME, "Poprzednia strona");
-	menu_setprop(menu2, MPROP_NEXTNAME, "Nastepna strona");
-	menu_setprop(menu2,MPROP_EXITNAME,"Wyjdz")
+	menu_setprop(menu2, MPROP_BACKNAME, "Poprzednia");
+	menu_setprop(menu2, MPROP_NEXTNAME, "Nastepna");
+	menu_setprop(menu2, MPROP_EXITNAME, "Wyjdz")
 	
 	// Niszczymy poprzednie menu
 	menu_destroy(menu)
 	
-	menu_display(id,menu2);
+	menu_display(id, menu2);
 }
 
 public toClassMenu_callback(id, menu, item) {
@@ -101,21 +101,21 @@ public toClassMenu_handle(id, menu, item) {
 	currentClass[id] = cod_get_user_class(id);
 	
 	// Sprawdzamy czy pierwsza klasa jest dostepna ( nie jest np. klasa VIP )
-	cod_set_user_class(id,fromClass[id],1);
+	cod_set_user_class(id, fromClass[id], 1);
 	chosen_checkFirstClass(TASK_CHECK_FIRST+id)
 }
 
 public chosen_checkFirstClass(id) {
 	id -= TASK_CHECK_FIRST;
 	if( cod_get_user_class(id) == fromClass[id] ) { // Prawidlowo ustawilo klase
-		cod_set_user_class(id,toClass[id],1);
+		cod_set_user_class(id, toClass[id], 1);
 		chosen_checkSecondClass(TASK_CHECK_SECOND+id)
 	}
 	else if ( cod_get_user_class(id) == currentClass[id] ) { // Wciaz nie zmienilo z poprzedniej klasy
-		set_task(0.2,"chosen_checkFirstClass",TASK_CHECK_FIRST+id);
+		set_task(0.2, "chosen_checkFirstClass", TASK_CHECK_FIRST+id);
 	}
 	else if( !cod_get_user_class(id) ) {
-		client_print_color(id,Red,"^4[%s] ^1Nie masz uprawnien, aby skorzystac z klasy z ktorej chcesz przeniesc EXP.",PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1Nie masz uprawnien, aby skorzystac z klasy z ktorej chcesz przeniesc EXP.", PREFIX);
 	}
 }
 
@@ -123,20 +123,20 @@ public chosen_checkSecondClass(id) {
 	id -= TASK_CHECK_SECOND;
 	if( cod_get_user_class(id) == toClass[id] ) { // Prawidlowo ustawilo klase
 		// Ustawiamy klase ktora mial gracz przed zakupem
-		cod_set_user_class(id,currentClass[id],1);
+		cod_set_user_class(id, currentClass[id], 1);
 		ss_show_sms_info(id);
 	}
 	else if ( cod_get_user_class(id) == fromClass[id] ) { // Wciaz nie zmienilo z poprzedniej klasy
-		set_task(0.2,"chosen_checkSecondClass",TASK_CHECK_SECOND+id);
+		set_task(0.2, "chosen_checkSecondClass", TASK_CHECK_SECOND+id);
 	}
 	else if( !cod_get_user_class(id) ) {
-		client_print_color(id,Red,"^4[%s] ^1Nie masz uprawnien, aby skorzystac z klasy na ktora chcesz przeniesc EXP.",PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1Nie masz uprawnien, aby skorzystac z klasy na ktora chcesz przeniesc EXP.", PREFIX);
 	}
 }
 
-public ss_service_bought(id,amount) {	
+public ss_service_bought(id, amount) {	
 	// Ustawiamy pierwsza klase
-	cod_set_user_class(id,fromClass[id],1);
+	cod_set_user_class(id, fromClass[id], 1);
 	
 	// Sprawdzamy czy pierwsza klasa sie prawidlowo zaladowala
 	bought_checkFirstClass(TASK_CHECK_FIRST+id);
@@ -149,18 +149,18 @@ public bought_checkFirstClass(id) {
 		fromClassExp[id] = cod_get_user_xp(id);
 		
 		// Zerujemy EXP pierwszej klasy
-		cod_set_user_xp(id,0);
+		cod_set_user_xp(id, 0);
 		
-		new name[32]; get_user_name(id,name,sizeof name);
-		new class1[64]; cod_get_class_name(fromClass[id],class1,sizeof class1);
-		ss_log("Zabrano graczowi %s %d EXPa z klasy %s",name,fromClassExp[id],class1);
+		new name[32+1]; get_user_name(id, name, charsmax(name));
+		new class1[64+1]; cod_get_class_name(fromClass[id], class1, charsmax(class1));
+		ss_log("Zabrano graczowi %s %d EXPa z klasy %s", name, fromClassExp[id], class1);
 		
 		// Ustawiamy druga klase
-		cod_set_user_class(id,toClass[id],1);
+		cod_set_user_class(id, toClass[id], 1);
 		bought_checkSecondClass(TASK_CHECK_SECOND+id)
 	}
 	else if( cod_get_user_class(id) == currentClass[id] ) { // Wciaz nie zmienilo z poprzedniej klasy
-		set_task(0.2,"bought_checkFirstClass",TASK_CHECK_FIRST+id);
+		set_task(0.2, "bought_checkFirstClass", TASK_CHECK_FIRST+id);
 	}
 }
 
@@ -168,18 +168,18 @@ public bought_checkSecondClass(id) {
 	id -= TASK_CHECK_SECOND;
 	if( cod_get_user_class(id) == toClass[id] ) { // Prawidlowo ustawilo klase
 		// Ustawiamy EXP na drugiej klasie
-		cod_set_user_xp(id,cod_get_user_xp(id)+fromClassExp[id]);
+		cod_set_user_xp(id, cod_get_user_xp(id)+fromClassExp[id]);
 		
 		// Ustawiamy klase ktora mial gracz przed zakupem
-		cod_set_user_class(id,currentClass[id],1);
+		cod_set_user_class(id, currentClass[id], 1);
 		
-		new name[32]; get_user_name(id,name,sizeof name);
-		new class1[64]; cod_get_class_name(fromClass[id],class1,sizeof class1);
-		new class2[64]; cod_get_class_name(toClass[id],class2,sizeof class2);
-		ss_log("Przeniesiono graczowi %s %d EXPa z klasy %s na klase %s",name,fromClassExp[id],class1,class2)
+		new name[32+1]; get_user_name(id, name, charsmax(name));
+		new class1[64+1]; cod_get_class_name(fromClass[id], class1, charsmax(class1));
+		new class2[64+1]; cod_get_class_name(toClass[id], class2, charsmax(class2));
+		ss_log("Przeniesiono graczowi %s %d EXPa z klasy %s na klase %s", name, fromClassExp[id], class1, class2)
 	}
 	else if( cod_get_user_class(id) == fromClass[id] ) { // Wciaz nie zmienilo z poprzedniej klasy
-		set_task(0.2,"bought_checkSecondClass",TASK_CHECK_SECOND+id);
+		set_task(0.2, "bought_checkSecondClass", TASK_CHECK_SECOND+id);
 	}
 }
 

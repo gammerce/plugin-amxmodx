@@ -19,8 +19,8 @@ public plugin_cfg() {
 	ss_register_service(service_id)
 }
 
-public ss_service_bought(id,amount) {
-	set_user_xp(id,get_user_xp(id)+amount);
+public ss_service_bought(id, amount) {
+	set_user_xp(id, get_user_xp(id)+amount);
 }
 
 // Zabezpieczenie, jezeli plugin jest odpalony na serwerze bez odpowiednich funkcji

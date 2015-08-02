@@ -27,17 +27,17 @@ public plugin_cfg() {
 	ss_register_service(service_id);
 }
 
-public ss_service_chosen(id,amount) {
-	new menu = menu_create("Wybierz odznake:","menuHandler")
+public ss_service_chosen(id, amount) {
+	new menu = menu_create("Wybierz odznake:", "menuHandler")
 	new menu_callback = menu_makecallback("menuCallback");
 	new nazwa[64]
 	for(new i = 0; i < bf2_get_maxbadges(); ++i) {
-		bf2_get_badge_name(i,amount,nazwa,charsmax(nazwa))
+		bf2_get_badge_name(i, amount, nazwa, charsmax(nazwa))
 		new data[2]
 		data[0] = i+1
-		data[1] = bf2_get_user_badge(id,i) >= amount ? 0 : 1
+		data[1] = bf2_get_user_badge(id, i) >= amount ? 0 : 1
 		
-		menu_additem(menu,nazwa,data,0,menu_callback)
+		menu_additem(menu, nazwa, data, 0, menu_callback)
 	}
 	
 	menu_setprop(menu, MPROP_BACKNAME, "Poprzednia strona");
@@ -62,7 +62,7 @@ public ss_service_chosen(id,amount) {
 public menuCallback(id, menu, item) {
 	new data[3], iName[2];
 	new zaccess, callback;
-	menu_item_getinfo(menu, item, zaccess, data,charsmax(data), iName, charsmax(iName), callback);
+	menu_item_getinfo(menu, item, zaccess, data, charsmax(data), iName, charsmax(iName), callback);
 	
 	return data[1] ? ITEM_ENABLED : ITEM_DISABLED
 	//return ITEM_ENABLED
@@ -78,11 +78,11 @@ public wyswietlMenu(data[]) {
 		new menu, newmenu, page
 		player_menu_info(id, menu, newmenu, page)
 		if(newmenu != data[1])
-			menu_display(id,data[1],stronaP[id])
+			menu_display(id, data[1], stronaP[id])
 		else
 			stronaP[id] = page
 			
-		set_task(0.1,"wyswietlMenu",TASK_MENU1+id, data, 2)
+		set_task(0.1, "wyswietlMenu", TASK_MENU1+id, data, 2)
 	}
 }
 
@@ -100,7 +100,7 @@ public menuHandler(id, menu, item) {
 		
 		new data[2], iName[2];
 		new zaccess, callback;
-		menu_item_getinfo(menu, item, zaccess, data,charsmax(data), iName, charsmax(iName), callback);
+		menu_item_getinfo(menu, item, zaccess, data, charsmax(data), iName, charsmax(iName), callback);
 		
 		dane[id] = data[0]-1
 		
@@ -111,20 +111,20 @@ public menuHandler(id, menu, item) {
 	}
 }
 
-public ss_service_bought(id,amount) {
+public ss_service_bought(id, amount) {
 	new badge_id = dane[id];
 	new badge_level = amount;
 	
-	if( bf2_set_user_badge(id,badge_id,badge_level) == -1 )
+	if( bf2_set_user_badge(id, badge_id, badge_level) == -1 )
 		return SS_ERROR;
 	
 	new szText[512];
-	bf2_get_badge_name(badge_id,badge_level,szText,sizeof szText);
-	format(szText,sizeof szText,"<html><body style=^"background-color: #0f0f0f; color: #ccc; font-size: 14px;^"><center><br /><br />\
+	bf2_get_badge_name(badge_id, badge_level, szText, charsmax(szText));
+	format(szText, charsmax(szText), "<html><body style=^"background-color: #0f0f0f; color: #ccc; font-size: 14px;^"><center><br /><br />\
 						<h1>Kupiles/as odznake: <span style=^"color: red^">%s</span><br /><br />\
 						W razie problemow skontaktuj sie z nami.\
-						</center></body></html>",szText);
-	show_motd(id,szText,"Informacje dotyczace uslugi");
+						</center></body></html>", szText);
+	show_motd(id, szText, "Informacje dotyczace uslugi");
 		
 	return SS_OK;
 }
