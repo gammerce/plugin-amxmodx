@@ -87,7 +87,7 @@ new 	which_service[33],
 	b_types[33];
 
 //CVARy
-new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_host, cvar_user, cvar_pass, cvar_db, cvar_server_ip;
+new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_host, cvar_user, cvar_pass, cvar_db, cvar_server_ip, cvar_silent_command;
 new sklep_komenda[MAX_KOMENDA+1], przeladuj_komenda[MAX_KOMENDA+1], uslugi_komenda[MAX_KOMENDA+1], show_info;
 
 // Sciezka do pliku konfiguracyjnego
@@ -141,6 +141,7 @@ new bool:is_amxbans = false;
 public plugin_natives() {
 	register_library("shop_sms");
 	register_native("ss_register_service", "registerService");
+	register_native("ss_show_service_purchase", "native_showServicePurchase");
 	register_native("ss_show_sms_info", "native_infoSMS");
 	register_native("ss_add_code", "native_addCode");
 	register_native("ss_log", "dodajLog");
@@ -175,6 +176,9 @@ public plugin_precache() {
 		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie, aby zobaczyc swoje aktywne uslugi^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_uslugi_komenda ^"/uslugi^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Czy po uzyciu powyzszych komend wyswietla sie one w chacie^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_ciche_komendy ^"0^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// Wyswietlac informacje o sklepie na chacie?^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_info ^"1^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
@@ -207,6 +211,7 @@ public plugin_precache() {
 	cvar_pass 	= register_cvar("sklepsms_pass", "");
 	cvar_db 	= register_cvar("sklepsms_db", "");
 	cvar_server_ip	= register_cvar("sklepsms_server_ip", "");
+	cvar_silent_command	= register_cvar("sklepsms_ciche_komendy", "0");
 	
 	// Wczytywanie confingu
 	if(file_exists(config_path)) {
@@ -387,17 +392,27 @@ public sayHook(id) {
 			client_print_color(id, Red, "^4[%s] ^1Nie mozna otworzyc sklepiku z powodu bledow ze sklepem.", PREFIX);
 		else
 			sklepMenu(id);
+			
+		if( get_pcvar_num(cvar_silent_command) )
+			return PLUGIN_HANDLED;
 	}
 	else if(equali(tekst, przeladuj_komenda)) {
 		pre_usersReload(id);
+		
+		if( get_pcvar_num(cvar_silent_command) )
+			return PLUGIN_HANDLED;
 	}
 	else if(equali(tekst, uslugi_komenda)) {
 		_showPlayerServices(id);
+		
+		if( get_pcvar_num(cvar_silent_command) )
+			return PLUGIN_HANDLED;
 	}
 	
 	#if defined TRACE_FILE
 	log_to_file(TRACE_FILE, "end1: sayHook");
 	#endif
+	return PLUGIN_CONTINUE;
 }
 
 /* Menu sklepu */
@@ -2092,6 +2107,19 @@ public dodajLog(plugin, params) {
 	#endif
 }
 
+public native_showServicePurchase(plugin, params) {
+	if(params != 2) {
+		return SS_ERROR;
+	}
+	
+	new service_id[MAX_ID+1];
+	new id = get_param(1);
+	get_string(2, service_id, charsmax(service_id));
+	
+	wyborMenu(id, _getServiceByID(service_id));
+	return SS_OK;
+}
+
 public native_infoSMS(plugin, params) {
 	#if defined TRACE_FILE
 	log_to_file(TRACE_FILE, "start: native_infoSMS");
@@ -2473,7 +2501,7 @@ _getServicePluginByID( id[] ) {
 	return -1;
 }
 
-/*_getServiceByID( id[] ) {
+_getServiceByID( id[] ) {
 	new service[e_Service];
 	for(new i = 0; i < ArraySize(services); ++i) {
 		ArrayGetArray(services, i, service);
@@ -2482,7 +2510,7 @@ _getServicePluginByID( id[] ) {
 		}
 	}
 	return -1;
-}*/
+}
 
 _getNumberByTariff( tariff, number[], len ) {
 	#if defined TRACE_FILE
