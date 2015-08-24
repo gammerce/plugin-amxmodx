@@ -1014,8 +1014,8 @@ public kodZwrotny(id) {
 	
 	// ############# ZAKUP USLUGI ###############
 	
-	new service[e_Service], auth_data[32], price[e_Price], ip[32];
-	new u_service_id[65], u_auth_data[64], u_password[65], u_sms_service[65], u_sms_code[MAX_CODE*2+1], u_ip[64];
+	new service[e_Service], auth_data[32+1], price[e_Price], ip[32];
+	new u_service_id[64+1], u_auth_data[64+1], u_password[64+1], u_sms_service[64+1], u_sms_code[MAX_CODE*2+1], u_ip[64+1];
 	
 	// Pobieramy dane o usludze
 	ArrayGetArray(services, which_service[id], service);
@@ -1193,13 +1193,14 @@ _showPlayerServices(id) {
 
 	new data[1]; data[0] = id;
 	formatex(szTemp, charsmax(szTemp),
-		"SELECT s.name AS `service`, FROM_UNIXTIME(ps.expire) AS `expire`, ps.expire AS `expire_num` FROM `%splayers_services` AS ps \
-		LEFT JOIN `%sservices` AS s ON ps.service = s.id \
-		WHERE ps.server = '%d' \
-		AND ((ps.type = '%d' AND ps.auth_data = '%s') \
-		OR (ps.type = '%d' AND ps.auth_data = '%s') \
-		OR (ps.type = '%d' AND ps.auth_data = '%s'))",
-		TABLE_PREFIX, TABLE_PREFIX, server_id, TYPE_NICK, name, TYPE_IP, ip, TYPE_SID, sid
+		"SELECT s.name AS `service`, FROM_UNIXTIME(us.expire) AS `expire`, us.expire AS `expire_num` FROM `%suser_service` AS us \
+		LEFT JOIN `%suser_service_extra_flags` AS usef ON usef.us_id = us.id \
+		LEFT JOIN `%sservices` AS s ON us.service = s.id \
+		WHERE usef.server = '%d' \
+		AND ((usef.type = '%d' AND usef.auth_data = '%s') \
+		OR (usef.type = '%d' AND usef.auth_data = '%s') \
+		OR (usef.type = '%d' AND usef.auth_data = '%s'))",
+		TABLE_PREFIX, TABLE_PREFIX, TABLE_PREFIX, server_id, TYPE_NICK, name, TYPE_IP, ip, TYPE_SID, sid
 	);
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "getPlayerServices", szTemp, data, sizeof data);
 }
