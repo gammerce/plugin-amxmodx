@@ -1194,8 +1194,8 @@ _showPlayerServices(id) {
 	new data[1]; data[0] = id;
 	formatex(szTemp, charsmax(szTemp),
 		"SELECT s.name AS `service`, FROM_UNIXTIME(us.expire) AS `expire`, us.expire AS `expire_num` FROM `%suser_service` AS us \
-		LEFT JOIN `%suser_service_extra_flags` AS usef ON usef.us_id = us.id \
-		LEFT JOIN `%sservices` AS s ON us.service = s.id \
+		INNER JOIN `%suser_service_extra_flags` AS usef ON usef.us_id = us.id \
+		INNER JOIN `%sservices` AS s ON us.service = s.id \
 		WHERE usef.server = '%d' \
 		AND ((usef.type = '%d' AND usef.auth_data = '%s') \
 		OR (usef.type = '%d' AND usef.auth_data = '%s') \
