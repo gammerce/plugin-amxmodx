@@ -35,7 +35,7 @@ forward amxbans_sql_initialized(Handle:sqlTuple, dbPrefix[]);
 #define DEBUG "sklep_sms_debug.log"
 #define CFG_FILE "sklep_sms.cfg"
 #define LOG_FILE "sklep_sms.log"
-//#define TRACE_FILE "sklep_sms_trace.log"
+//#define FOLLOW_RELOAD_FLAGS "shopsms_follow_reload_flags.log"
 
 // Stale
 const MAX_KOMENDA = 32;
@@ -149,9 +149,6 @@ public plugin_natives() {
 }
 
 public plugin_precache() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: plugin_precache");
-	#endif
 	get_configsdir(config_path, charsmax(config_path));
 	
 	// Tworzenie pliku sklep_sms.cfg
@@ -225,17 +222,9 @@ public plugin_precache() {
 	smses = ArrayCreate(e_SMS);
 	services = ArrayCreate(e_Service);
 	pricelist = ArrayCreate(e_Price);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: plugin_precache");
-	#endif
 }
 
-public plugin_init() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: plugin_init");
-	#endif
-	
+public plugin_init() {	
 	register_plugin("Sklep SMS", VERSION, "SeeK");
 	
 	register_menucmd(register_menuid("SMS_Info"), KEYS, "infoSMS_handler");
@@ -250,17 +239,9 @@ public plugin_init() {
 	
 	if( show_info )
 		set_task(137.0, "reklama", _, _, _, "b");
-		
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: plugin_init");
-	#endif
 }
 
 public loadCvars() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: loadCvar");
-	#endif
-
 	//Pobieranie wartosci cvarow
 	get_pcvar_string(cvar_sklep, sklep_komenda, charsmax(sklep_komenda));
 	get_pcvar_string(cvar_przeladuj, przeladuj_komenda, charsmax(przeladuj_komenda));
@@ -271,30 +252,14 @@ public loadCvars() {
 	get_pcvar_string(cvar_user, sql_user, charsmax(sql_user));
 	get_pcvar_string(cvar_pass, sql_pass, charsmax(sql_pass));
 	get_pcvar_string(cvar_db, sql_db, charsmax(sql_db));
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: loadCvar");
-	#endif
 }
 
-public plugin_end() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: plugin_end");
-	#endif
-	
+public plugin_end() {	
 	if( SqlTuple )
 		SqlTuple = Empty_Handle;
-		
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: plugin_end");
-	#endif
 }
 
-public plugin_cfg() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: plugin_cfg");
-	#endif
-	
+public plugin_cfg() {	
 	// Blad przy tworzeniu ( brak uprawnien )
 	if( !file_exists(config_path) )
 		brakSciezki(0, config_path);
@@ -333,57 +298,25 @@ public plugin_cfg() {
 	);
 	//log_to_file(LOG_FILE, szTemp);
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "getServerData", szTemp);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: plugin_cfg");
-	#endif
 }
 
-public checkLoadedServices() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: checkLoadedServices");
-	#endif
-	
+public checkLoadedServices() {	
 	if( !ArraySize(services) ) {
 		log_amx("Nie zaladowano zadnych uslug.");
 	} else {
 		log_amx("Zaladowano %d uslug.", ArraySize(services));
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: checkLoadedServices");
-	#endif
 }
 
-public client_authorized(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: client_authorized");
-	#endif
-	
+public client_authorized(id) {	
 	_usersCheckUser(id);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: client_authorized");
-	#endif
 }
 
-public client_putinserver(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: client_putinserver");
-	#endif
-	
+public client_putinserver(id) {	
 	_usersCheckUser(id);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: client_putinserver");
-	#endif
 }
 
-public sayHook(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: sayHook");
-	#endif
-	
+public sayHook(id) {	
 	new tekst[32];
 	read_argv(1, tekst, charsmax(tekst));
 	
@@ -409,54 +342,28 @@ public sayHook(id) {
 			return PLUGIN_HANDLED;
 	}
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: sayHook");
-	#endif
 	return PLUGIN_CONTINUE;
 }
 
 /* Menu sklepu */
 public sklepMenu(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: sklepMenu");
-	#endif
-	
 	if( !is_user_connected(id) ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: sklepMenu");
-		#endif
 		return;
 	}
 	if(!get_pcvar_num(cvar_on)) {
 		client_print_color(id, Red, "^4[%s] ^1Sklep jest obecnie ^3wylaczony^1.", PREFIX);
-		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end2: sklepMenu");
-		#endif
 		return;
 	}
 	if( !sql_connected ) {
 		client_print_color(id, Red, "^4[%s] ^1Nie polaczono z baza danych.", PREFIX);
-		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end4: sklepMenu");
-		#endif
 		return;
 	}
 	if(!ArraySize(services)) {
 		client_print_color(id, Red, "^4[%s] ^1Brak dostepnych uslug do kupienia.", PREFIX);
-		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end3: sklepMenu");
-		#endif
 		return;
 	}
 	if( !shop_registered ) {
 		client_print_color(id, Red, "^4[%s] ^1Nie udalo sie przeprowadzic walidacji licencji lub wystapil blad w zapytaniu do bazy danych.", PREFIX);
-		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end5: sklepMenu");
-		#endif
 		return;
 	}
 	
@@ -502,37 +409,18 @@ public sklepMenu(id) {
 	
 	client_print_color(id, Red, "^4[%s] ^1W razie problemow mozesz sie z nami skontaktowac", PREFIX);
 	client_print_color(id, Red, "^4[%s] ^1poprzez: ^3%s", PREFIX, st_contact);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end6: sklepMenu");
-	#endif
 }
 
-public sklepMenu_callback(id, menu, item) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: sklepMenu_callback");
-	#endif
-	
+public sklepMenu_callback(id, menu, item) {	
 	new data[4], zaccess, callback;
 	menu_item_getinfo(menu, item, zaccess, data, sizeof data, _, _, callback);
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: sklepMenu_callback");
-	#endif
 	return data[1] == ITEM_DISABLED ? ITEM_DISABLED : ITEM_ENABLED;
 }
 
 public sklepMenu_handler(id, menu, item) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: sklepMenu_handler");
-	#endif
-	
 	if( !is_user_connected(id) || item == MENU_EXIT ) {
 		menu_destroy(menu);
-		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: sklepMenu_handler");
-		#endif
 		return;
 	}
 	
@@ -541,23 +429,12 @@ public sklepMenu_handler(id, menu, item) {
 	
 	wyborMenu(id, data[0]-1);
 	menu_destroy(menu);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: sklepMenu_handler");
-	#endif
 }
 /* Konie menu sklepu */
 
 /* Menu wyboru */
-public wyborMenu(id, service_id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: wyborMenu");
-	#endif
-	
+public wyborMenu(id, service_id) {	
 	if( !is_user_connected(id) ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "start: wyborMenu");
-		#endif
 		return;
 	}
 		
@@ -616,23 +493,11 @@ public wyborMenu(id, service_id) {
 	}
 	else // Zero
 		client_print_color(id, Red, "^4[%s] ^1Brak cennika dla tej uslugi.", PREFIX);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: wyborMenu");
-	#endif
 }
 
-public wyborMenu_handler(id, menu, item) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: wyborMenu_handler");
-	#endif
-	
+public wyborMenu_handler(id, menu, item) {	
 	if(!is_user_connected(id) || item == MENU_EXIT) {
 		menu_destroy(menu);
-		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: wyborMenu_handler");
-		#endif
 		return;
 	}
 	
@@ -644,19 +509,11 @@ public wyborMenu_handler(id, menu, item) {
 	
 	prev_infoSMS(id);
 	menu_destroy(menu);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: wyborMenu_handler");
-	#endif
 }
 /* Koniec menu wyboru */
 
 /* Informacje dot SMSa */
-
 public prev_infoSMS(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: prev_infoSMS");
-	#endif
 	
 	new service[e_Service];
 	ArrayGetArray(services, which_service[id], service);
@@ -678,19 +535,12 @@ public prev_infoSMS(id) {
 		
 		menuDisplayServiceTypes(data);
 	}
-	else
+	else {
 		_serviceChosen(id);
-		
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: prev_infoSMS");
-	#endif
+	}
 }
 
-public menuServiceType_callback(id, menu, item) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: menuServiceType_callback");
-	#endif
-	
+public menuServiceType_callback(id, menu, item) {	
 	new service[e_Service];
 	ArrayGetArray(services, which_service[id], service);
 
@@ -703,18 +553,10 @@ public menuServiceType_callback(id, menu, item) {
 	return ITEM_DISABLED;
 }
 
-public menuDisplayServiceTypes(data[]) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: menuDisplayServiceTypes");
-	#endif
-	
+public menuDisplayServiceTypes(data[]) {	
 	new id = data[0];
 	if( !is_user_connected(id) ) {
 		menu_destroy(data[1]);
-		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: menuDisplayServiceTypes");
-		#endif
 		return;
 	}
 	
@@ -724,17 +566,9 @@ public menuDisplayServiceTypes(data[]) {
 		menu_display(id, data[1]);
 			
 	set_task(0.1, "menuDisplayServiceTypes", TASK_SHOW_MENU_SERVICE_TYPES+id, data, 2);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: menuDisplayServiceTypes");
-	#endif
 }
 
-public menuServiceType_handler(id, menu, item) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: menuServiceType_handler");
-	#endif
-	
+public menuServiceType_handler(id, menu, item) {	
 	switch(item) {
 		case 0: {
 			client_cmd(id, "messagemode ssnick_Podaj_Haslo");
@@ -751,83 +585,41 @@ public menuServiceType_handler(id, menu, item) {
 		remove_task(TASK_SHOW_MENU_SERVICE_TYPES+id);
 		menu_destroy(menu);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: menuServiceType_handler");
-	#endif
 }
 
-public menuServiceType_nick(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: menuServiceType_nick");
-	#endif
-	
+public menuServiceType_nick(id) {	
 	new szPassword[65];
 	read_argv(1, szPassword, charsmax(szPassword));
 	
-	if( !_menuServiceType_checkPass(id, TYPE_NICK, szPassword) )
+	if( !_menuServiceType_checkPass(id, TYPE_NICK, szPassword) ) {
 		client_cmd(id, "messagemode ssnick_Podaj_Haslo");
-		
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: menuServiceType_nick");
-	#endif
+	}
 }
 
 public menuServiceType_ip(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: menuServiceType_ip");
-	#endif
-	
 	new szPassword[65];
 	read_argv(1, szPassword, charsmax(szPassword));
 	
 	if( !_menuServiceType_checkPass(id, TYPE_IP, szPassword) )
 		client_cmd(id, "messagemode ssip_Podaj_Haslo");
-		
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: menuServiceType_ip");
-	#endif
 }
 
 bool:_menuServiceType_checkPass(id, type, szPassword[]) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: _menuServiceType_checkPass");
-	#endif
-	
 	if( strlen(szPassword) > 30 ) {
 		client_print(id, print_center, "Podane haslo jest za dlugie. Maksymalna ilosc znakow wynosi 30.");
-		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: _menuServiceType_checkPass");
-		#endif
 		return false;
 	}
 	else if( !strlen(szPassword) ) {
 		client_print(id, print_center, "Haslo nie zostalo wprowadzone. Wprowadz je.");
-		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end2: _menuServiceType_checkPass");
-		#endif
 		return false;
 	}
 	
 	_serviceChosen(id, type, szPassword);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end3: _menuServiceType_checkPass");
-	#endif
 	return true;
 }
 
 public checkServicePassword(FailState, Handle:Query, Error[], Errorcode, data[], data_size) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: checkServicePassword");
-	#endif
-	
 	if( _checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: checkServicePassword");
-		#endif
 		return;
 	}
 
@@ -849,17 +641,9 @@ public checkServicePassword(FailState, Handle:Query, Error[], Errorcode, data[],
 			client_cmd(id, "messagemode ssip_Podaj_Haslo");
 		}
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: checkServicePassword");
-	#endif
 }
 
-_serviceChosen(id, type=0, szPassword[] = "") {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: _serviceChosen");
-	#endif
-	
+_serviceChosen(id, type=0, szPassword[] = "") {	
 	new service[e_Service], price[e_Price];
 	ArrayGetArray(services, which_service[id], service);
 	ArrayGetArray(pricelist, which_price[id], price);
@@ -874,21 +658,10 @@ _serviceChosen(id, type=0, szPassword[] = "") {
 	if( ret != SS_STOP ) {
 		infoSMS(id);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: _serviceChosen");
-	#endif
 }
 
-public infoSMS(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: infoSMS");
-	#endif
-	
+public infoSMS(id) {	
 	if( !is_user_connected(id) ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: infoSMS");
-		#endif
 		return;
 	}
 	
@@ -917,44 +690,22 @@ public infoSMS(id) {
 	
 	//Wyswietlane caly czas menu zakupu
 	infoSMS_wyswietl(szText, id+TASK_WYSWIETL);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: infoSMS");
-	#endif
 }
 
-public infoSMS_wyswietl(info[], id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: infoSMS_wyswietl");
-	#endif
-	
+public infoSMS_wyswietl(info[], id) {	
 	id -= TASK_WYSWIETL;
 	if( !is_user_connected(id) ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: infoSMS_wyswietl");
-		#endif
 		return;
 	}
 		
 	show_menu(id, KEYS, info, 1, "SMS_Info");
 	set_task(0.9, "infoSMS_wyswietl", id+TASK_WYSWIETL, info, strlen(info));
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: infoSMS_wyswietl");
-	#endif
 }
 
-public infoSMS_handler(id, key) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: infoSMS_handler");
-	#endif
-	
+public infoSMS_handler(id, key) {	
 	if(task_exists(id+TASK_WYSWIETL)) remove_task(id+TASK_WYSWIETL);
 		
 	if( !is_user_connected(id) ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: infoSMS_handler");
-		#endif
 		return;
 	}
 		
@@ -964,22 +715,11 @@ public infoSMS_handler(id, key) {
 	else if(key == 9) {
 		client_print_color(id, Red, "^4[%s] ^1Transakcja zostala ^3przerwana^1.", PREFIX);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: infoSMS_handler");
-	#endif
 }
 
 // Wprowadzanie kodu zwrotnego
-public kodZwrotny(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: kodZwrotny");
-	#endif
-	
+public kodZwrotny(id) {	
 	if( !is_user_connected(id) ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: kodZwrotny");
-		#endif
 		return;
 	}
 		
@@ -989,23 +729,14 @@ public kodZwrotny(id) {
 	dodajLog2(id, "Wprowadzono kod: %s", sms_code);
 	
 	if(!strlen(sms_code)) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end2: kodZwrotny");
-		#endif
 		client_print_color(id, Red, "^4[%s] ^1Nie wprowadzono kodu zwrotnego.", PREFIX);
 		return;
 	}
 	else if(containi(sms_code, " ") != -1) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end3: kodZwrotny");
-		#endif
 		client_print_color(id, Red, "^4[%s] ^1Kod zwrotny ^3nie moze ^1zawierac ^3spacji^1.", PREFIX);
 		return;
 	}
 	else if(strlen(sms_code) == 1 && containi(sms_code, "0") == 0) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end4: kodZwrotny");
-		#endif
 		client_print_color(id, Red, "^4[%s] ^1Kod zwrotny ^3nie moze ^1byc rowny^3 0^1.", PREFIX);
 		return;
 	}
@@ -1050,17 +781,9 @@ public kodZwrotny(id) {
 		shop_url_add, st_random_key_md5, u_service_id, b_types[id], u_auth_data, u_password, server_id, u_sms_service, u_sms_code, price[pTARIFF], u_ip
 	);
 	sendSocket(id, shop_url, szUrl, "purchase_service");
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end4: kodZwrotny");
-	#endif
 }
 
-public purchaseService_callback(id, return_value[], szText[], positive, bsid, szWarnings[]) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: purchaseService_callback");
-	#endif
-	
+public purchaseService_callback(id, return_value[], szText[], positive, bsid, szWarnings[]) {	
 	client_print_color(id, Red, "^4[%s] ^1%s", PREFIX, szText);
 	
 	if( strlen(szWarnings) ) {
@@ -1079,9 +802,6 @@ public purchaseService_callback(id, return_value[], szText[], positive, bsid, sz
 	
 	// Wystapil jakis blad, wiec przerywamy
 	if( positive != 1 ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: purchaseService_callback");
-		#endif
 		return;
 	}
 		
@@ -1108,15 +828,8 @@ public purchaseService_callback(id, return_value[], szText[], positive, bsid, sz
 		
 		dodajLog2(id, "Wystapil blad podczas kupowania %s - %s; Taryfa: %d", service[sNAME], amount, price[pTARIFF]);
 		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end2: purchaseService_callback");
-		#endif
 		return;
 	}
-	
-	// Jezeli usluga ma flagi do ustawienia to wczytujemy ponownie dane z bazy
-	if( service[FLAGS] )
-		usersReloadData();
 	
 	// Info w przypadku usługi na haslo
 	if( b_types[id] & (TYPE_NICK|TYPE_IP) ) {
@@ -1147,8 +860,9 @@ public purchaseService_callback(id, return_value[], szText[], positive, bsid, sz
 	}
 	
 	new amount[32+1];
-	if( price[AMOUNT] == -1 ) // Jezeli -1 to usluga jest na zawsze
+	if( price[AMOUNT] == -1 ) {// Jezeli -1 to usluga jest na zawsze
 		formatex(amount, charsmax(amount), "Na zawsze");
+	}
 	else {
 		groupDigits(price[AMOUNT], amount, charsmax(amount));
 		format(amount, charsmax(amount), "%s %s", amount, service[TAG]);
@@ -1156,24 +870,22 @@ public purchaseService_callback(id, return_value[], szText[], positive, bsid, sz
 	
 	client_print_color(id, Blue, "^4[%s] ^1Prawidlowo kupiono ^4%s^1: %s", PREFIX, service[sNAME], amount);
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end3: purchaseService_callback");
-	#endif
+	// Jezeli usluga ma flagi do ustawienia to wczytujemy ponownie dane z bazy
+	if( service[FLAGS] ) {
+		#if defined FOLLOW_RELOAD_FLAGS
+		log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 1");
+		#endif
+		// Musimy przeladowac z opoznieniem, aby dane uzytkownika zalapaly nowe haslo
+		set_task(2.0, "usersReloadData");
+	}
 }
 
 // Dodanie kodu do bazy kodow
-public addCode(sms_code[], sms_tariff, free) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: addCode");
-	#endif
-	
+public addCode(sms_code[], sms_tariff, free) {	
 	formatex(szTemp, charsmax(szTemp), "INSERT INTO `%ssms_codes` (`code`, `tariff`, `free`) VALUES ('%s', '%d', '%d')", TABLE_PREFIX, sms_code, sms_tariff, free);
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "IgnoreHandle", szTemp);
 	dodajLog2(0, "Dodano SMSa do tabeli kodow do wykorzystania. Kod: %s Taryfa: %d", sms_code, sms_tariff);
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: addCode");
-	#endif
 	return SS_OK;
 }
 
@@ -1243,64 +955,46 @@ public showPlayerServices_handler(id, menu, item) {
 
 // Funkcje dotyczace flag graczy 
 
-public pre_usersReload(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: pre_usersReload");
-	#endif
-	
+public pre_usersReload(id) {	
 	if(ostatnie_przeladowanie+10 > get_systime()) {
 		client_print_color(id, Red, "^4[%s] ^1Ktos przed chwila przeladowal liste. Odczekaj chwile.", PREFIX);
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: pre_usersReload");
-		#endif
 		return;
 	}
 	ostatnie_przeladowanie = get_systime();
 	_usersReload(id);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: pre_usersReload");
-	#endif
 }
 
 _usersReload(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: _usersReload");
+	#if defined FOLLOW_RELOAD_FLAGS
+	log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 9");
 	#endif
-	
 	for(new i = 1; i <= get_maxplayers(); ++i) {
 		if( !is_user_connected(i) )
 			continue;
 			
 		_usersCheckUser(i);
 	}
-	if( id )
+	if( id ) {
 		client_print_color(id, Red, "^4[%s] ^1Prawidlowo przeladowano liste flag wykupionych w sklepiku.", PREFIX);
-		
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: _usersReload");
+	}
+	#if defined FOLLOW_RELOAD_FLAGS
+	log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 10");
 	#endif
 }
 
 // Funkcja wczytujaca z bazy ponownie dane graczy
-public usersReloadData() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: usersReloadData");
+public usersReloadData() {	
+	#if defined FOLLOW_RELOAD_FLAGS
+	log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 2");
 	#endif
-	
 	// Wczytywanie danych graczy
 	_usersLoad(true);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: usersReloadData");
-	#endif
 }
 
 _usersLoad(bool:reload) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: _usersLoad");
+	#if defined FOLLOW_RELOAD_FLAGS
+	log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 3");
 	#endif
-	
 	// Czyscimy dotychczasowe dane
 	ArrayClear(players_flags);
 	players_loaded = false;
@@ -1320,21 +1014,13 @@ _usersLoad(bool:reload) {
 	
 	new data[1]; data[0] = reload; // Przeladuj liste adminow w amxbans
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "getPlayersData", szTemp, data, sizeof data);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: _usersLoad");
-	#endif	
 }
 
 public getPlayersData(FailState, Handle:Query, Error[], Errorcode, data[], data_size) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: getPlayersData");
+	#if defined FOLLOW_RELOAD_FLAGS
+	log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 4");
 	#endif
-	
 	if( _checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end2: getPlayersData");
-		#endif
 		return;
 	}
 
@@ -1370,6 +1056,9 @@ public getPlayersData(FailState, Handle:Query, Error[], Errorcode, data[], data_
 	
 	players_loaded = true;
 	
+	#if defined FOLLOW_RELOAD_FLAGS
+	log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 5");
+	#endif
 	if( data[0] && is_amxbans ) {// Przeladuj dane w amxbans, a tym samym uruchom komende dodawania danych do tablicy globalnej uprawnien
 		server_cmd("amx_reloadadmins");
 	}
@@ -1377,38 +1066,25 @@ public getPlayersData(FailState, Handle:Query, Error[], Errorcode, data[], data_
 		// Sprawdzamy uprawnienia graczy
 		_usersReload(0);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: getPlayersData");
-	#endif	
 }
 
-public amxbans_sql_initialized() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: amxbans_sql_initialized");
+public amxbans_sql_initialized() {	
+	#if defined FOLLOW_RELOAD_FLAGS
+	log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 6");
 	#endif
-	
 	is_amxbans = true;
 	addUsersToGlobalArray();
 	// Sprawdzamy uprawnienia graczy
 	_usersReload(0);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: amxbans_sql_initialized");
-	#endif
 }
 
 // Funkcja sluzaca do dodania graczy do tablicy globalnej przechowujacej dane uprawnien graczy
-public addUsersToGlobalArray() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: addUsersToGlobalArray");
+public addUsersToGlobalArray() {	
+	#if defined FOLLOW_RELOAD_FLAGS
+	log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 7");
 	#endif
-	
 	if( !players_loaded ) { // Dane uzytkownikow nie zostaly jeszcze zaladowane
 		set_task(0.1, "addUsersToGlobalArray");
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: addUsersToGlobalArray");
-		#endif
 		return;
 	}
 	
@@ -1476,17 +1152,12 @@ public addUsersToGlobalArray() {
 		ArrayGetArray(users, i, player_flags);
 		admins_push(player_flags[pfPLAYER], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: addUsersToGlobalArray");
+	#if defined FOLLOW_RELOAD_FLAGS
+	log_to_file(FOLLOW_RELOAD_FLAGS, "Krok 8");
 	#endif
 }
 
-_getOrderOfType(type) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: _getOrderOfType");
-	#endif
-	
+_getOrderOfType(type) {	
 	switch(type) {
 		case FLAG_IP: return 1;
 		case FLAG_NICK : return 2;
@@ -1497,29 +1168,14 @@ _getOrderOfType(type) {
 }
 
 public usersCheckUser_task(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: sersCheckUser_task");
-	#endif
-	
 	_usersCheckUser(id-TASK_CHECK_USER);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: sersCheckUser_task");
-	#endif
 }
 
-public _usersCheckUser(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: _usersCheckUser");
-	#endif
-	
+public _usersCheckUser(id) {	
 	if( !players_loaded ) {
 		if( !task_exists(TASK_CHECK_USER+id) )
 			set_task(0.1, "usersCheckUser_task", TASK_CHECK_USER+id);
 			
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: _usersCheckUser");
-		#endif
 		return;
 	}
 	
@@ -1572,11 +1228,8 @@ public _usersCheckUser(id) {
 							if( !(player_flags[pfTYPE]&FLAG_KICK) ) // Nie kickuj gracza, tylko mu nie przydziel flag
 								continue;
 						
-							server_cmd("kick #%d ^"Bledne haslo^"", get_user_userid(id));
+							server_cmd("kick #%d ^"Nieprawidlowe haslo^"", get_user_userid(id));
 							
-							#if defined TRACE_FILE
-							log_to_file(TRACE_FILE, "end2: _usersCheckUser");
-							#endif
 							return;
 						}
 					}
@@ -1586,46 +1239,22 @@ public _usersCheckUser(id) {
 		
 		set_user_flags(id, player_flags[pfFLAGS]);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end3: _usersCheckUser");
-	#endif
 }
 
-public brakSciezki(id, path[]) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: brakSciezki");
-	#endif
-	
+public brakSciezki(id, path[]) {	
 	dodajLog2(0, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
 	log_to_file(LOG_FILE, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
 	if( id )
 		client_print_color(id, Blue, "^4[%s] ^1Wystapil ^3blad ^1przy zapisywaniu ustawien. Prawdopodobnie ^4brak uprawnien^1.", PREFIX);
-
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: brakSciezki");
-	#endif
 }
 
-public reklama() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: reklama");
-	#endif
-	
+public reklama() {	
 	if(get_playersnum()>1) {
 		client_print_color(0, Red, "^4[%s] ^1Zapraszamy wszystkich do korzystania ze ^3sklepiku! ^1Wystarczy wpisac: ^4%s", PREFIX, sklep_komenda);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: reklama");
-	#endif
 }
 
-public dodajLog2(id, const szFormat[], any:...) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: dodajLog2");
-	#endif
-	
+public dodajLog2(id, const szFormat[], any:...) {	
 	#if defined LOGING
 	new szText[256], name[33], ip[22], sid[22];
 	vformat(szText, charsmax(szText), szFormat, 3);
@@ -1637,33 +1266,17 @@ public dodajLog2(id, const szFormat[], any:...) {
 	
 	log_to_sql(szText, charsmax(szText));
 	#endif
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: dodajLog2");
-	#endif
 }
 
-public log_to_sql(text[], text_len) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: log_to_sql");
-	#endif
-	
+public log_to_sql(text[], text_len) {	
 	format(text, text_len, "%s. Serwer: %d", text, server_id);
 	escape(text, text_len);
 	
 	formatex(szTemp, charsmax(szTemp), "INSERT INTO `%slogs` (text) VALUES ('%s')", TABLE_PREFIX, text);
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "IgnoreHandle", szTemp);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: log_to_sql");
-	#endif
 }
 
-public getServerData(FailState, Handle:Query, Error[], Errorcode) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: getServerData");
-	#endif
-	
+public getServerData(FailState, Handle:Query, Error[], Errorcode) {	
 	sql_connected = true;
 	if(FailState != TQUERY_SUCCESS) {
 		log_to_file(LOG_FILE, "Tresc bledu ( %d ): %s", Errorcode, Error );
@@ -1679,9 +1292,6 @@ public getServerData(FailState, Handle:Query, Error[], Errorcode) {
 			sql_connected = false;
 			_error41(Errorcode, Error);
 			
-			#if defined TRACE_FILE
-			log_to_file(TRACE_FILE, "end1: getServerData");
-			#endif
 			return;
 		}
 		
@@ -1741,20 +1351,12 @@ public getServerData(FailState, Handle:Query, Error[], Errorcode) {
 		formatex(szTemp, charsmax(szTemp), "SELECT * FROM `%sservices` WHERE `id` IN(%s) ORDER BY `order` ASC", TABLE_PREFIX, ids);
 		if(SqlTuple) SQL_ThreadQuery(SqlTuple, "getServicesData", szTemp);
 	}
-	else
-		// Sprawdz zaladowane uslugi
-		checkLoadedServices();
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: getServerData");
-	#endif
+	else {
+		checkLoadedServices(); // Sprawdz zaladowane uslugi
+	}
 }
 
-public getServicesData(FailState, Handle:Query, Error[], Errorcode) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: getServicesData");
-	#endif
-	
+public getServicesData(FailState, Handle:Query, Error[], Errorcode) {	
 	if( _checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED ) {
 		_error12();
 	}
@@ -1802,21 +1404,10 @@ public getServicesData(FailState, Handle:Query, Error[], Errorcode) {
 		);
 		if(SqlTuple) SQL_ThreadQuery(SqlTuple, "getPriceList", szTemp);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: getServicesData");
-	#endif
 }
 
-public getPriceList(FailState, Handle:Query, Error[], Errorcode) {	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: getPriceList");
-	#endif
-	
+public getPriceList(FailState, Handle:Query, Error[], Errorcode) {		
 	if( _checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: getPriceList");
-		#endif
 		return;
 	}
 
@@ -1832,21 +1423,10 @@ public getPriceList(FailState, Handle:Query, Error[], Errorcode) {
 		
 		SQL_NextRow(Query);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: getPriceList");
-	#endif
 }
 
-public getSettings(FailState, Handle:Query, Error[], Errorcode) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: getSettings");
-	#endif
-	
+public getSettings(FailState, Handle:Query, Error[], Errorcode) {	
 	if( _checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: getSettings");
-		#endif
 		return;
 	}
 
@@ -1908,18 +1488,10 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode) {
 	// Pobranie danych o serwisie transakcyjnym
 	formatex(szTemp, charsmax(szTemp), "SELECT * FROM `%stransaction_services` WHERE `id` = '%s'", TABLE_PREFIX, st_sms_service);
 	if(SqlTuple) SQL_ThreadQuery(SqlTuple, "getTransactionServiceData", szTemp);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: getSettings");
-	#endif
 }
 
 // Funkcja ktora wysyla zapytanie do serwera o sprawdzenie czy licencja jest prawidlowa
-public validateLicense() {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: validateLicense");
-	#endif
-	
+public validateLicense() {	
 	// Sprawdzenie licencji
 	new szUrl[512], szName[128];
 	get_cvar_string("hostname", server_name, charsmax(server_name));
@@ -1930,21 +1502,10 @@ public validateLicense() {
 		license, license_password, server_ip, VERSION, szName
 	);
 	sendSocket(0, "license.sklep-sms.pl", szUrl, "validate_license");
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: validateLicense");
-	#endif
 }
 
-public getTransactionServiceData(FailState, Handle:Query, Error[], Errorcode) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: getTransactionServiceData");
-	#endif
-	
+public getTransactionServiceData(FailState, Handle:Query, Error[], Errorcode) {	
 	if( _checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: getTransactionServiceData");
-		#endif
 		return;
 	}
 
@@ -1962,21 +1523,10 @@ public getTransactionServiceData(FailState, Handle:Query, Error[], Errorcode) {
 	SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "data"), data, charsmax(data));
 	if( !json_decode(data, "sms_text", transaction_service[SMS_TEXT], MAX_SMS_TEXT) )
 		log_to_file(LOG_FILE, "Nie udalo sie pobrac kodu sms.");
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: getTransactionServiceData");
-	#endif
 }
 
-public getSMSesData(FailState, Handle:Query, Error[], Errorcode) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: getSMSesData");
-	#endif
-	
+public getSMSesData(FailState, Handle:Query, Error[], Errorcode) {	
 	if( _checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: getSMSesData");
-		#endif
 		return;
 	}
 
@@ -1989,17 +1539,9 @@ public getSMSesData(FailState, Handle:Query, Error[], Errorcode) {
 		
 		SQL_NextRow(Query);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: getSMSesData");
-	#endif
 }
 
-_checkForSQLErrors(Handle:Query, FailState, Error[], Errorcode) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: _checkForSQLErrors");
-	#endif
-	
+_checkForSQLErrors(Handle:Query, FailState, Error[], Errorcode) {	
 	sql_connected = true;
 	if(FailState != TQUERY_SUCCESS) {
 		if(FailState == TQUERY_QUERY_FAILED)
@@ -2014,27 +1556,14 @@ _checkForSQLErrors(Handle:Query, FailState, Error[], Errorcode) {
 		SQL_GetQueryString(Query, szTemp, charsmax(szTemp));
 		log_to_file(LOG_FILE, "Zapytanie: %s", szTemp);
 		
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: _checkForSQLErrors");
-		#endif
 		return PLUGIN_HANDLED;
 	}
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: _checkForSQLErrors");
-	#endif
 	return PLUGIN_CONTINUE;
 }
 
-public IgnoreHandle(FailState, Handle:Query, Error[], Errorcode) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: IgnoreHandle");
-	#endif
-	
+public IgnoreHandle(FailState, Handle:Query, Error[], Errorcode) {	
 	_checkForSQLErrors(Query, FailState, Error, Errorcode);
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: IgnoreHandle");
-	#endif
 }
 
 /* #########################################################################################################################
@@ -2042,16 +1571,9 @@ public IgnoreHandle(FailState, Handle:Query, Error[], Errorcode) {
  * #########################################################################################################################
  */
  
-public registerService(plugin, params) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: registerService");
-	#endif
-	
+public registerService(plugin, params) {	
 	if(params != 1) {
 		log_to_file(LOG_FILE, "Wystapil blad podczas dodawania uslugi. Bledna ilosc argumentow funkcji ss_register_service");
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: registerService");
-		#endif
 		return SS_ERROR;
 	}
 		
@@ -2062,22 +1584,12 @@ public registerService(plugin, params) {
 	ArrayPushCell(service_plugins, plugin);
 	ArrayPushString(service_ids, id);
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: registerService");
-	#endif
 	return SS_OK;
 }
 
 // Dodawanie kodu do listy kodow do wykorzystania
-public native_addCode(plugin, params) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: native_addCode");
-	#endif
-	
+public native_addCode(plugin, params) {	
 	if( params != 2 ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: native_addCode");
-		#endif
 		return;
 	}
 	
@@ -2085,26 +1597,14 @@ public native_addCode(plugin, params) {
 	get_string(1, sms_code, charsmax(sms_code));
 	tariff = get_param(2);
 	addCode(sms_code, tariff, 1);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: native_addCode");
-	#endif
 }
 
 // Logowanie danych z pluginow zewnetrznych
-public dodajLog(plugin, params) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: dodajLog");
-	#endif
-	
+public dodajLog(plugin, params) {	
 	#if defined LOGING
 	new text[1024];
 	vdformat(text, charsmax(text), 1, 2);
 	log_to_sql(text, charsmax(text));
-	#endif
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: dodajLog");
 	#endif
 }
 
@@ -2121,60 +1621,30 @@ public native_showServicePurchase(plugin, params) {
 	return SS_OK;
 }
 
-public native_infoSMS(plugin, params) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: native_infoSMS");
-	#endif
-	
+public native_infoSMS(plugin, params) {	
 	if(params != 1) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: native_infoSMS");
-		#endif
 		return SS_ERROR;
 	}
 	
 	infoSMS( get_param(1) );
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: native_infoSMS");
-	#endif
 	return SS_OK;
 }
 
-public bool:native_is_steam(plugin, params) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: native_is_steam");
-	#endif
-	
+public bool:native_is_steam(plugin, params) {	
 	if(params != 1) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: native_is_steam");
-		#endif
 		return false;
 	}
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: native_is_steam");
-	#endif
 	return is_steam( get_param(1) );
 }
 
-bool:is_steam(id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: is_steam");
-	#endif
-	
+bool:is_steam(id) {	
 	new auth[32];
 	get_user_authid(id, auth, charsmax(auth));
 	if(contain(auth, "STEAM_0:0:") != -1 || contain(auth, "STEAM_0:1:") != -1) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: is_steam");
-		#endif
 		return true;
 	}
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: is_steam");
-	#endif
 	return false;
 }
 
@@ -2288,11 +1758,7 @@ _make_error(informacja[]) {
 /* ############# Koniec: Licencja ################## */
 
 // ######### Sockets #########
-public socket_polacz(id, szHost[]) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: socket_polacz");
-	#endif
-	
+public socket_polacz(id, szHost[]) {	
 	new error;
 	if( sockets[id] ) {
 		closeSocket(id);
@@ -2306,28 +1772,15 @@ public socket_polacz(id, szHost[]) {
 		#if defined LOG_FILE
 		log_to_file(LOG_FILE, "Nie mozna polaczyc sie z hostem: %s. ID bledu: %d.", szHost, error);
 		#endif
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: socket_polacz");
-		#endif
 		return 0;
 	}
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: socket_polacz");
-	#endif
 	return 1;
 }
 
-public socket_CheckData(szAction[], id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: socket_CheckData");
-	#endif
-	
+public socket_CheckData(szAction[], id) {	
 	id -= TASK_CHECK_SOCKET;
 	if(!socket_change(sockets[id])) {
 		set_task(0.6, "socket_CheckData", TASK_CHECK_SOCKET+id, szAction, strlen(szAction));
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: socket_CheckData");
-		#endif
 		return;
 	}
 	
@@ -2340,9 +1793,6 @@ public socket_CheckData(szAction[], id) {
 		log_to_file(DEBUG, "Nie znaleziono pliku. Akcja: %s", szAction);
 		#endif
 		closeSocket(id);
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end2: socket_CheckData");
-		#endif
 		return;
 	}
 	
@@ -2404,20 +1854,10 @@ public socket_CheckData(szAction[], id) {
 	}
 
 	closeSocket(id);
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end3: socket_CheckData");
-	#endif
 }
 
 public sendSocket(id, szHost[], szUrl[], szAction[]) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: sendSocket");
-	#endif
-	
 	if( !socket_polacz(id, szHost) ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: sendSocket");
-		#endif
 		return;
 	}
 	
@@ -2429,17 +1869,9 @@ public sendSocket(id, szHost[], szUrl[], szAction[]) {
 	//Utworzenie nowego pseudo watku oczekujacego na odpowiedz
 	set_task(0.6, "socket_CheckData", TASK_CHECK_SOCKET+id, szAction, strlen(szAction));
 	set_task(10.0, "socket_TimeOut", TASK_TIME_OUT+id, szText, strlen(szText));
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: sendSocket");
-	#endif
 }
 
-public socket_TimeOut(szData[], id) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: socket_TimeOut");
-	#endif
-	
+public socket_TimeOut(szData[], id) {	
 	id -= TASK_TIME_OUT;
 	
 	new szAction[32], szText[512];
@@ -2458,47 +1890,25 @@ public socket_TimeOut(szData[], id) {
 		log_to_file(LOG_FILE, "Nie udalo sie przeprowadzic walidacji licencji o numerze identyfikacyjnym: %s", license);
 		shop_registered = false;
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: closeSocket");
-	#endif
 }
 
-public closeSocket(socketID) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: closeSocket");
-	#endif
-	
+public closeSocket(socketID) {	
 	socket_close(sockets[socketID]);
 	sockets[socketID] = 0;
 	remove_task(TASK_CHECK_SOCKET+socketID);
 	remove_task(TASK_TIME_OUT+socketID);
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: closeSocket");
-	#endif
 }
 // ######### Koniec Socketow #########
 
 _getServicePluginByID( id[] ) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: _getServicePluginByID");
-	#endif
-	
 	new temp[MAX_NAME+1];
 	for(new i = 0; i < ArraySize(service_ids); ++i) {
 		ArrayGetString(service_ids, i, temp, charsmax(temp));
 		if( equali(id, temp) ) {
-			#if defined TRACE_FILE
-			log_to_file(TRACE_FILE, "end1: _getServicePluginByID");
-			#endif
 			return ArrayGetCell(service_plugins, i);
 		}
 	}
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: _getServicePluginByID");
-	#endif
 	return -1;
 }
 
@@ -2513,38 +1923,20 @@ _getServiceByID( id[] ) {
 	return -1;
 }
 
-_getNumberByTariff( tariff, number[], len ) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: _getNumberByTariff");
-	#endif
-	
+_getNumberByTariff( tariff, number[], len ) {	
 	new sms[e_SMS];
 	for(new i = 0; i < ArraySize(smses); ++i) {
 		ArrayGetArray(smses, i, sms);
 		if( tariff == sms[sTARIFF] ) {
 			copy(number, len, sms[NUMBER]);
-			#if defined TRACE_FILE
-			log_to_file(TRACE_FILE, "end1: _getNumberByTariff");
-			#endif
 			return;
 		}
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: _getNumberByTariff");
-	#endif
 }
 
 /* Stocki */
-stock usunPusteLinie(sciezka[]) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: usunPusteLinie");
-	#endif
-	
+stock usunPusteLinie(sciezka[]) {	
 	if( !file_exists(sciezka) ) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: usunPusteLinie");
-		#endif
 		return;
 	}
 		
@@ -2570,72 +1962,37 @@ stock usunPusteLinie(sciezka[]) {
 		//Zmienia nazwe tymczasowego pliku na stary plik
 		rename_file(zastepcza, sciezka, 1);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end2: usunPusteLinie");
-	#endif
 }
 
-stock escape(string[], string_len=64) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: escape");
-	#endif
-	
+stock escape(string[], string_len=64) {	
 	replace_all(string, string_len, "'", "\'");
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: escape");
-	#endif
 	return 1;
 }
 
-stock get_sms_cost(szNumber[]) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: get_sms_cost");
-	#endif
-	
+stock get_sms_cost(szNumber[]) {	
 	if(strlen(szNumber) < 4) {
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end1: get_sms_cost");
-		#endif
 		return 0;
 	}
 	else if(szNumber[0] == '7') {
 		new temp[4];
 		formatex(temp, charsmax(temp), "%c", szNumber[1]);
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end2: get_sms_cost");
-		#endif
 		return szNumber[1] == '0' ? 50 : str_to_num(temp)*100;
 	}
 	else if(szNumber[0] == '9') {
 		new temp[4];
 		formatex(temp, charsmax(temp), "%c%c", szNumber[1], szNumber[2]);
-		#if defined TRACE_FILE
-		log_to_file(TRACE_FILE, "end3: get_sms_cost");
-		#endif
 		return str_to_num(temp)*100;
 	}
 	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end4: get_sms_cost");
-	#endif
 	return 0;
 }
 
-stock two_number_value(value) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: two_number_value");
-	#endif
-	
+stock two_number_value(value) {	
 	new temp[17];
 	if( value < 10 )
 		formatex(temp, charsmax(temp), "0%d", value);
 	else
 		formatex(temp, charsmax(temp), "%d", value);
-		
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: two_number_value");
-	#endif
 		
 	return temp;
 }
@@ -2653,11 +2010,7 @@ stock groupDigits(a, output[], len) {
 	}
 }
 
-stock getXMLValue(szText[], tag[], output[], len) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: getXMLValue");
-	#endif
-	
+stock getXMLValue(szText[], tag[], output[], len) {	
 	new temp[64], textStart, textEnd;
 	
 	formatex(temp, charsmax(temp), "<%s>", tag);
@@ -2671,17 +2024,9 @@ stock getXMLValue(szText[], tag[], output[], len) {
 		new tag_len = 2 + strlen(tag);
 		copy(output, min(len, textEnd - textStart - tag_len), szText[textStart + tag_len]);
 	}
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: getXMLValue");
-	#endif
 }
 
-stock StringURLEncode( const szInput[ ], szOutput[ ], const iLen ) {
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "start: StringURLEncode");
-	#endif
-	
+stock StringURLEncode( const szInput[ ], szOutput[ ], const iLen ) {	
 	static const HEXCHARS[ 16 ] = {
 		0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 
 		0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66
@@ -2719,10 +2064,6 @@ stock StringURLEncode( const szInput[ ], szOutput[ ], const iLen ) {
 	}
 	
 	szOutput[ iFLen ] = 0;
-	
-	#if defined TRACE_FILE
-	log_to_file(TRACE_FILE, "end1: StringURLEncode");
-	#endif
 	
 	return iFLen;
 }
