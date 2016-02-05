@@ -835,10 +835,15 @@ public kodZwrotny(id)
 	getWebPage(g_szTemp, g_shopPagePort, "getWebPagePurchaseService");
 }
 
-public getWebPagePurchaseService(const data[], const content[], playerId, status)
+public getWebPagePurchaseService(const data[], const content[], playerId, status, statusCode)
 {
 	switch (status) {
 		case SOCKET_OK: {
+			if (statusCode >= 300) {
+				client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrociło bledny http code.", PREFIX);
+				return;
+			}
+			
 			new return_value[33], szText[128], szPositive[3], szBsid[16], szWarnings[1024];
 	
 			getXMLValue(content, "return_value", return_value, charsmax(return_value));
@@ -881,7 +886,7 @@ public purchaseServicePost(id, return_value[], szText[], positive, bsid, szWarni
 	}
 	
 	// Wystapil jakis blad, wiec przerywamy
-	if (positive != 1) {
+	if (! positive) {
 		return;
 	}
 		
@@ -1644,10 +1649,16 @@ public validateLicense()
 	getWebPage(g_szTemp, _, "getWebPageValidateLicense");
 }
 
-public getWebPageValidateLicense(const data[], const content[], playerId, status)
+public getWebPageValidateLicense(const data[], const content[], playerId, status, statusCode)
 {
 	switch (status) {
 		case SOCKET_OK: {
+			if (statusCode >= 300) {
+				g_shopRegistered = false;
+				log_to_file(LOG_FILE, "Licencja nie zostala zwalidowana z powodu blednego HTTP CODE.");
+				return;
+			}
+		
 			new text[33];
 		
 			getXMLValue(content, "text", text, charsmax(text));
@@ -1901,15 +1912,15 @@ _make_error(message[]) {
 /**
  * Get page content
  *
- * @param const char[]	path			path (eg. example.com/shop/ddd)
+ * @param const char[]	url			path (eg. example.com/shop/ddd)
  * @param int			port			eg. 80
- * @param const char[]	function		callback function
+ * @param const char[]	callback		callback function
  * @param const char[]	functionData	callback function data
  * @param int			playerId		id of the player
  * 
  * @return bool
  */
-bool:getWebPage(const url[], port = 80, const function[] = "", const functionData[] = "", playerId = 0)
+bool:getWebPage(const url[], port = 80, const callback[] = "", const functionData[] = "", playerId = 0)
 {
 	new host[128], path[256];
 	split(url, host, charsmax(host), path, charsmax(path), "/");
@@ -1933,16 +1944,16 @@ bool:getWebPage(const url[], port = 80, const function[] = "", const functionDat
 	new requestData[1024];
 	
 	if (true) { // pseudo deleting variables
-		new functionEscaped[256], functionDataEscaped[512];
+		new callbackEscaped[256], functionDataEscaped[512];
 		
-		copy(functionEscaped, charsmax(functionEscaped), function);
+		copy(callbackEscaped, charsmax(callbackEscaped), callback);
 		copy(functionDataEscaped, charsmax(functionDataEscaped), functionData);
 		replace_all(httpRequest, charsmax(httpRequest), "^"", "^^^"");
-		replace_all(functionEscaped, charsmax(functionEscaped), "^"", "^^^"");
+		replace_all(callbackEscaped, charsmax(callbackEscaped), "^"", "^^^"");
 		replace_all(functionDataEscaped, charsmax(functionDataEscaped), "^"", "^^^"");
 	
 		// "httpRequest" "function" "functionData"
-		formatex(requestData, charsmax(requestData), "%d ^"%s^" ^"%s^" ^"%s^"", playerId, httpRequest, function, functionData);
+		formatex(requestData, charsmax(requestData), "%d ^"%s^" ^"%s^" ^"%s^"", playerId, httpRequest, callbackEscaped, functionDataEscaped);
 	}
 	
 	set_task(0.6, "mySocketCheckData", TASK_CHECK_SOCKET + socketId, requestData, strlen(requestData));
@@ -2006,7 +2017,7 @@ public mySocketCheckData(const requestData[], socketId)
 		log_to_file(LOG_FILE, "Zapytanie zwrocilo blad: %d %s^n%s", statusCode, statusMessage, httpRequest);
 	}
 	
-	mySocketCallCallback(function, functionData, receiveDataContent, playerId, statusCode < 300 ? SOCKET_OK : statusCode);
+	mySocketCallCallback(function, functionData, receiveDataContent, playerId, SOCKET_OK, statusCode);
 }
 
 /**
@@ -2063,7 +2074,7 @@ public mySocketTimeout(requestData[], socketId)
 	mySocketCallCallback(function, functionData, "", playerId, SOCKET_TIMEOUT);
 }
 
-mySocketCallCallback(const function[], const functionData[], const receiveDataContent[], playerId, status)
+mySocketCallCallback(const function[], const functionData[], const receiveDataContent[], playerId, status, statusCode = 0)
 {
 	if (! strlen(function)) {
 		return;
@@ -2074,6 +2085,7 @@ mySocketCallCallback(const function[], const functionData[], const receiveDataCo
 		callfunc_push_str(receiveDataContent);
 		callfunc_push_int(playerId); // player id
 		callfunc_push_int(status);
+		callfunc_push_int(statusCode);
 		callfunc_end();
 	} else {
 		log_to_file(LOG_FILE, "Funkcja %s nie zostala prawidlowo wywolana.", function);
