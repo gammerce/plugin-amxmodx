@@ -3,7 +3,7 @@
 native get_user_xp(id);
 native set_user_xp(id, ilosc);
 
-new const service_id[MAX_ID] = "gxm_exp";
+new const service_id[MAX_SERVICE_ID + 1] = "gxm_exp";
 #define PLUGIN "Sklep-SMS: Usluga GXM EXP"
 #define AUTHOR "SeeK"
 
@@ -30,5 +30,6 @@ public native_filter(const native_name[], index, trap) {
 		pause_plugin();
 		return PLUGIN_HANDLED;
 	}
+	
 	return PLUGIN_CONTINUE;
 }

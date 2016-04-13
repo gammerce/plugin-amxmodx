@@ -11,7 +11,7 @@ native cod_set_user_class(id, klasa, zmien=0);
 #define TASK_CHECK_FIRST 1000
 #define TASK_CHECK_SECOND 2000
 
-new const service_id[MAX_ID] = "cod_exp_transfer";
+new const service_id[MAX_SERVICE_ID + 1] = "cod_exp_transfer";
 #define PLUGIN "Sklep-SMS: Usluga COD PE"
 #define AUTHOR "SeeK"
 
@@ -191,5 +191,6 @@ public native_filter(const native_name[], index, trap) {
 		pause_plugin();
 		return PLUGIN_HANDLED;
 	}
+	
 	return PLUGIN_CONTINUE;
 }

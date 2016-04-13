@@ -228,7 +228,7 @@ public plugin_precache()
 	}
 	
 	service_plugins = ArrayCreate();
-	service_ids = ArrayCreate(MAX_SERVICE_ID);
+	service_ids = ArrayCreate(MAX_SERVICE_ID + 1);
 	
 	g_playersFlags = ArrayCreate(e_PlayerFlags);
 	smses = ArrayCreate(e_SMS);
@@ -1874,12 +1874,13 @@ public bool:native_is_steam(plugin, params)
 // ################################
 
 _error10() {
-	_make_error("Error 10 - Wystapil blad podczas odczytywania odpowiedzi od serwera walidujacego licencje. Zobacz logi.");
+	log_to_file(LOG_FILE, "Error 10 - Wystapil blad podczas odczytywania odpowiedzi od serwera walidujacego licencje. Zobacz logi.");
+	g_blocked = true;
 }
 
 _error13() {
-	formatex(g_szTemp, charsmax(g_szTemp), "Error 13 - Brak licencji o numerze identyfikacyjnym: %s lub bledne haslo.", license);
-	_make_error(g_szTemp);
+	log_to_file(LOG_FILE, "Error 13 - Brak licencji o numerze identyfikacyjnym: %s lub bledne haslo.", license);
+	g_blocked = true;
 }
 
 _error14() {

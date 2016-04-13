@@ -3,7 +3,7 @@
 native zp_get_user_ammo_packs(id);
 native zp_set_user_ammo_packs(id, amount);
 
-new const service_id[MAX_ID] = "zp_ap";
+new const service_id[MAX_SERVICE_ID + 1] = "zp_ap";
 #define PLUGIN "Sklep-SMS: Usluga ZP AP"
 #define AUTHOR "SeeK"
 
@@ -30,5 +30,6 @@ public native_filter(const native_name[], index, trap) {
 		pause_plugin();
 		return PLUGIN_HANDLED;
 	}
+	
 	return PLUGIN_CONTINUE;
 }

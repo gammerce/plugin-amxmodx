@@ -6,7 +6,7 @@ native bf2_get_badge_name(badge_id, badge_level, name[], len);
 native bf2_get_user_badge(index, badge_id);
 native bf2_set_user_badge(index, badge_id, level);
 
-new const service_id[MAX_ID] = "bf2_badge";
+new const service_id[MAX_SERVICE_ID + 1] = "bf2_badge";
 #define PLUGIN "Sklep-SMS: Usluga BF2 Odznaki"
 #define AUTHOR "SeeK"
 
