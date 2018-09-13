@@ -794,7 +794,7 @@ public kodZwrotny(id)
 	// ############# ZAKUP USLUGI ###############
 	
 	new url[MAX_URL + 1];
-	if (true) {
+	{
 		new service[e_Service], auth_data[32 + 1], price[e_Price], ip[MAX_IP + 1];
 		new u_service_id[MAX_SERVICE_ID * 2 + 1], u_auth_data[64 + 1], u_password[MAX_PASSWORD * 2 + 1],
 			u_sms_service[MAX_TRANS_SERVICE_ID * 2 + 1], u_sms_code[MAX_CODE * 2 + 1];
@@ -1657,7 +1657,7 @@ public validateLicense()
 {	
 	new url[MAX_URL + 1];
 	
-	if (true) {
+	{
 		new serverNameEscaped[MAX_SERVER_NAME * 2 + 1];
 		get_cvar_string("hostname", g_serverName, charsmax(g_serverName));
 		StringURLEncode(g_serverName, serverNameEscaped, charsmax(serverNameEscaped));
