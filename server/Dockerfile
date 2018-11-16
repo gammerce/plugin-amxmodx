@@ -39,4 +39,6 @@ WORKDIR /home/steam/dedicated
 
 VOLUME /home/steam/dedicated
 
+EXPOSE 27015
+
 CMD /home/steam/dedicated/hlds_run -game cstrike +maxplayers 16 +map de_dust2

@@ -97,7 +97,7 @@ new sklep_komenda[MAX_COMMAND + 1], przeladuj_komenda[MAX_COMMAND + 1], uslugi_k
 new config_path[128];
 
 //Licencja
-new license[32], license_password[33];
+new license_token[63];
 new bool:g_footer = true;
 new g_serverIp[MAX_IP + 1];
 new g_serverPort[MAX_PORT + 1];
@@ -142,7 +142,7 @@ new st_currency[16],
 	Float:st_vat;
 	
 new g_shopPageUrl[MAX_URL + 1];
-new g_shopPagePort = 80;
+//new g_shopPagePort = 80;
 
 new bool:g_shopRegistered = false;
 new bool:g_AmxbansExists = false;
@@ -833,7 +833,7 @@ public kodZwrotny(id)
 		);
 	}
 	
-	getWebPage(url, g_shopPagePort, "getWebPagePurchaseService", id);
+	makeRequest("GET", url, "", "", "getWebPagePurchaseService", id);
 }
 
 public getWebPagePurchaseService(const content[], playerId, socketStatus, statusCode)
@@ -1438,7 +1438,7 @@ public getServerData(FailState, Handle:Query, Error[], Errorcode)
 		// Get shop settings
 		formatex(g_szTemp, charsmax(g_szTemp),
 			"SELECT * FROM `%ssettings` \
-			WHERE `key` IN ('currency', 'shop_url', 'signature', 'sms_service', 'contact', 'vat', 'random_key', 'license_login', 'license_password')",
+			WHERE `key` IN ('currency', 'shop_url', 'signature', 'sms_service', 'contact', 'vat', 'random_key', 'license_password')",
 			TABLE_PREFIX
 		);
 		SQL_ThreadQuery(SqlTuple, "getSettings", g_szTemp);
@@ -1586,11 +1586,13 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode)
 			copy(g_shopPageUrl, charsmax(g_shopPageUrl), value);
 			
 			// TODO: implement https
-			if (replace(g_shopPageUrl, charsmax(g_shopPageUrl), "https://", "")) {
-				g_shopPagePort = 80;
-			} else if (replace(g_shopPageUrl, charsmax(g_shopPageUrl), "http://", "")) {
-				g_shopPagePort = 80;
-			}
+			// if (replace(g_shopPageUrl, charsmax(g_shopPageUrl), "https://", "")) {
+			// 	g_shopPagePort = 80;
+			// } else if (replace(g_shopPageUrl, charsmax(g_shopPageUrl), "http://", "")) {
+			// 	g_shopPagePort = 80;
+			// }
+			replace(g_shopPageUrl, charsmax(g_shopPageUrl), "https://", "");
+			replace(g_shopPageUrl, charsmax(g_shopPageUrl), "http://", "");
 			
 			// Remove trailing slash
 			if (g_shopPageUrl[strlen(g_shopPageUrl) - 1] == '/') {
@@ -1617,12 +1619,8 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode)
 			copy(st_random_key, charsmax(st_random_key), value);
 			md5(st_random_key, st_random_key_md5); // Hashujemy random key
 		}
-		else if (equali(key, "license_login")) {
-			copy(license, charsmax(license), value);
-			trim(license);
-		}
 		else if (equali(key, "license_password")) {
-			copy(license_password, charsmax(license_password), value);
+			copy(license_token, charsmax(license_token), value);
 		}
 		
 		SQL_NextRow(Query);
@@ -1654,55 +1652,71 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode)
 
 // Funkcja ktora wysyla zapytanie do serwera o sprawdzenie czy licencja jest prawidlowa
 public validateLicense()
-{	
-	new url[MAX_URL + 1];
+{
+	new headers[MAX_HEADERS + 1];
+	new body[MAX_BODY + 1];
 	
 	{
 		new serverNameEscaped[MAX_SERVER_NAME * 2 + 1];
 		get_cvar_string("hostname", g_serverName, charsmax(g_serverName));
 		StringURLEncode(g_serverName, serverNameEscaped, charsmax(serverNameEscaped));
-	
-		formatex(url, charsmax(url), 
-			"license.sklep-sms.pl/license.php?action=login_server&type=engine_amxx&license_id=%s&license_password=%s&server_ip=%s:%s&version=%s&name=%s", 
-			license, license_password, g_serverIp, g_serverPort, VERSION, serverNameEscaped
+
+		formatex(headers, charsmax(headers),
+			"Authorization: %s^r^n",
+			license_token
+		);
+
+		formatex(body, charsmax(body),
+			"platform=amxmodx&url=%s:%s&name=%s&version=%s",
+			g_serverIp, g_serverPort, serverNameEscaped, VERSION
 		);
 	}
-	getWebPage(url, 80, "getWebPageValidateLicense");
+	makeRequest("POST", "license.sklep-sms.pl/v1/authorization/server", headers, body, "onValidateLicenseResponse");
 }
 
-public getWebPageValidateLicense(const content[], playerId, status, statusCode)
+public onValidateLicenseResponse(const content[], playerId, status, statusCode)
 {
 	switch (status) {
 		case SOCKET_OK: {
+			g_shopRegistered = false;
+
+			if (statusCode == 401) {
+				_errorInvalidToken();
+				return;
+			}
+
+			if (statusCode == 422) {
+				_errorValidationError();
+				return;
+			}
+
+			if (statusCode == 402) {
+				_errorPaymentRequired();
+				return;
+			}
+
 			if (statusCode >= 300) {
-				g_shopRegistered = false;
-				log_to_file(LOG_FILE, "Licencja nie zostala zwalidowana z powodu blednego HTTP CODE.");
+				_errorInvalidResponse(statusCode);
 				return;
 			}
 		
 			new text[32 + 1];
 			getXMLValue(content, "text", text, charsmax(text));
 			trim(text);
-		
-			if (equal(text, "updated")) {
-				g_shopRegistered = true;
-			
-				new footer[2];
-				getXMLValue(content, "footer", footer, charsmax(footer));
-				g_footer = str_to_num(footer) ? true : false;
-				
-				log_amx("Walidacja licencji o numerze identyfikacyjnym: %s zostala zakonczona pomyslnie", license);
-			}
-			else if (equal(text, "not_updated")) {
-				_error14();
-			}
-			else if (equal(text, "not_logged_successfully")) {
-				_error13();
-			}
-			else {
+
+			if (!equal(text, "ok")) {
+				g_shopRegistered = false;
 				log_to_file(LOG_FILE, "%s", content);
-				_error10();
+				_errorUnknown();
+				return;
 			}
+	
+			new footer[2];
+			getXMLValue(content, "footer", footer, charsmax(footer));
+			g_footer = str_to_num(footer) ? true : false;
+			
+			g_shopRegistered = true;
+			log_amx("Walidacja licencji zostala zakonczona pomyslnie");
 		}
 		
 		case SOCKET_TIMEOUT: {
@@ -1873,18 +1887,28 @@ public bool:native_is_steam(plugin, params)
 // ## 5 - probem z serwerem
 // ################################
 
-_error10() {
+_errorUnknown() {
 	log_to_file(LOG_FILE, "Error 10 - Wystapil blad podczas odczytywania odpowiedzi od serwera walidujacego licencje. Zobacz logi.");
 	g_blocked = true;
 }
 
-_error13() {
-	log_to_file(LOG_FILE, "Error 13 - Brak licencji o numerze identyfikacyjnym: %s lub bledne haslo.", license);
+_errorInvalidResponse(statusCode) {
+	log_to_file(LOG_FILE, "Error 11 - Serwer walidacyjny zwrocil bledny HTTP CODE %d.", statusCode);
 	g_blocked = true;
 }
 
-_error14() {
-	log_to_file(LOG_FILE, "Error 14 - Nie udalo sie zaktualizowac aktywnosci serwera.");
+_errorValidationError() {
+	log_to_file(LOG_FILE, "Error 12 - Walidacja wyslanych danych nie powiodla sie.");
+	g_blocked = true;
+}
+
+_errorInvalidToken() {
+	log_to_file(LOG_FILE, "Error 13 - Bledny token licencji.");
+	g_blocked = true;
+}
+
+_errorPaymentRequired() {
+	log_to_file(LOG_FILE, "Error 14 - Licencja nie wspiera tego typu serwera lub przekroczono limit stron WWW.");
 	g_blocked = true;
 }
 
@@ -1921,32 +1945,40 @@ _make_error(message[]) {
 /* ############# Koniec: Licencja ################## */
 
 /**
- * Get page content
+ * Make HTTP request
  *
- * @param const char[]	url			path (eg. example.com/shop/ddd)
- * @param int			port			eg. 80
+ * @param const char[]	method			GET POST PUT etc.
+ * @param const char[]	url				path (eg. example.com/shop/ddd)
+ * @param const char[]	headers			headers
+ * @param const char[]	body			body params
  * @param const char[]	callback		callback function
  * @param int			playerId		id of the player
  * 
  * @return bool
  */
-bool:getWebPage(const url[MAX_URL + 1], port = 80, const callback[MAX_FUNCTION + 1] = "", playerId = 0)
+bool:makeRequest(const method[], const url[MAX_URL + 1], const headers[], const body[], const callback[MAX_FUNCTION + 1] = "", playerId = 0)
 {
 	static host[MAX_URL_HOST + 1], path[MAX_URL_PATH + 1];
 	host[0] = '^0';
 	path[0] = '^0';
 	split(url, host, charsmax(host), path, charsmax(path), "/");
 	
-	new socketId = mySocketOpen(host, port, playerId);
+	new socketId = mySocketOpen(host, 80, playerId);
 	if (socketId == SS_ERROR) {
 		return false;
 	}
 	
 	new httpRequest[MAX_HTTP_REQUEST + 1];
 	formatex(httpRequest, charsmax(httpRequest),
-		"GET /%s HTTP/1.1^r^n\
-		Host: %s^r^n^r^n",
-		path, host
+		"%s /%s HTTP/1.1^r^n\
+		Host: %s^r^n\
+		Content-Length: %d^r^n\
+		Content-Type: application/x-www-form-urlencoded; charset=UTF-8^r^n\
+		User-Agent: amxmodx^r^n\
+		%s\
+		^r^n\
+		%s",
+		method, path, host, strlen(body), headers, body
 	);
 	socket_send(g_sockets[socketId], httpRequest, strlen(httpRequest));
 	

@@ -5,7 +5,7 @@
 
 #pragma library "shop_sms_const"
 
-#define VERSION "3.4.1"
+#define VERSION "3.5.0"
 
 #define PREFIX "SKLEP-SMS"
 
@@ -33,7 +33,8 @@
 #define MAX_URL_HOST 128
 #define MAX_URL_PATH 384
 #define MAX_URL MAX_URL_HOST + MAX_URL_PATH
-#define MAX_BODY 1023
+#define MAX_HEADERS 128
+#define MAX_BODY 384
 #define MAX_FUNCTION 128
 #define MAX_HTTP_RESPONSE 1023
 #define MAX_HTTP_REQUEST MAX_URL + 64
