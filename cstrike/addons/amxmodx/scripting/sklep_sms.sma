@@ -13,6 +13,8 @@
 #pragma semicolon 1
 
 forward amxbans_sql_initialized(Handle:sqlTuple, dbPrefix[]);
+forward client_admin(id, flags);
+forward amxx_admin_access(id, flags, timestamp);
 
 #define FLAG_NICK (1<<5)
 
@@ -1094,6 +1096,8 @@ public pre_reassignPlayersFlags(id)
  */
 _reassignPlayersFlags(id = 0)
 {
+    addUsersToGlobalArray()
+
 	for (new i = 1; i <= get_maxplayers(); ++i) {
 		if (! is_user_connected(i)) {
 			continue;
@@ -1184,13 +1188,22 @@ public getPlayersData(FailState, Handle:Query, Error[], Errorcode, data[], data_
 public amxbans_sql_initialized()
 {	
 	g_AmxbansExists = true;
-	addUsersToGlobalArray();
 	_reassignPlayersFlags();
+}
+
+public client_admin(id, flags)
+{
+    _usersCheckUser(id);
+}
+
+public amxx_admin_access(id, flags, timestamp)
+{
+    _usersCheckUser(id);
 }
 
 // Funkcja sluzaca do dodania graczy do tablicy globalnej przechowujacej dane uprawnien graczy
 public addUsersToGlobalArray()
-{	
+{
 	if (!g_playersLoaded) { // Dane uzytkownikow nie zostaly jeszcze zaladowane
 		set_task(0.1, "addUsersToGlobalArray");
 		return;
