@@ -1333,17 +1333,17 @@ public _usersCheckUser(id)
 			new password[MAX_PASSWORD + 1], password_md5[34];
 			
 			get_user_info(id, "_pw", password, charsmax(password));
-			md5(password, password_md5);
+			vc_md5(password, password_md5);
 			
 			if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
 				get_user_info(id, "_pw2", password, charsmax(password));
-				md5(password, password_md5);
+				vc_md5(password, password_md5);
 				if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
 					get_user_info(id, "_pw3", password, charsmax(password));
-					md5(password, password_md5);
+					vc_md5(password, password_md5);
 					if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
 						get_user_info(id, "_ss", password, charsmax(password));
-						md5(password, password_md5);
+						vc_md5(password, password_md5);
 						if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
 							if (! (player_flags[pfTYPE]&FLAG_KICK)) { // Nie kickuj gracza, tylko mu nie przydziel flag
 								continue;
@@ -1625,7 +1625,7 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode)
 		}
 		else if (equali(key, "random_key")) {
 			copy(st_random_key, charsmax(st_random_key), value);
-			md5(st_random_key, st_random_key_md5); // Hashujemy random key
+			vc_md5(st_random_key, st_random_key_md5); // Hashujemy random key
 		}
 		else if (equali(key, "license_password")) {
 			copy(license_token, charsmax(license_token), value);
@@ -2043,7 +2043,7 @@ public mySocketCheckData(const requestData[], socketId)
 {	
 	socketId -= TASK_SOCKET_CHECK;
 	
-	if (! socket_change(g_sockets[socketId])) {
+	if (! vc_socket_change(g_sockets[socketId])) {
 		set_task(0.6, "mySocketCheckData", TASK_SOCKET_CHECK + socketId, requestData, strlen(requestData));
 		return;
 	}
@@ -2223,14 +2223,23 @@ bool:isDebug()
 
 // ------------------------------------------------- Versions Compatibility ----------------------------------------------------
 
-#if !defined md5
-
-md5(const szString[], md5buffer[34])
+vc_md5(const szString[], md5buffer[34])
 {
+	#if defined hash_string
 	hash_string(szString, Hash_Md5, md5buffer, 34);
+	#else
+	md5(szString, md5buffer);
+	#endif
 }
 
-#endif
+vc_socket_change(socket)
+{
+	#if defined socket_is_readable
+	return socket_is_readable(socket);
+	#else
+	return socket_change(socket);
+	#endif
+}
 
 // --------------------------------------------------------- Stocks ------------------------------------------------------------
 
