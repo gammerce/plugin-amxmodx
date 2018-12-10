@@ -1,6 +1,6 @@
 #include <amxmodx>
 #include <shop_sms>
-#include <colorchat>
+#include <custom_color_chat>
 native cod_get_classes_num();
 native cod_get_class_name(perk, Return[], len);
 native cod_get_user_class(id);

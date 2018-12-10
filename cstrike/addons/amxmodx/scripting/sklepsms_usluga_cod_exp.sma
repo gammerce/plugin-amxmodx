@@ -1,6 +1,6 @@
 #include <amxmodx>
 #include <shop_sms>
-#include <colorchat>
+#include <custom_color_chat>
 native cod_get_user_class(id);
 native cod_get_user_xp(id);
 native cod_set_user_xp(id, wartosc);

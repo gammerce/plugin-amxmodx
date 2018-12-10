@@ -3,12 +3,7 @@
 #include <sqlx>
 #include <sockets>
 #include <shop_sms_const>
-#if AMXX_VERSION_NUM < 183
-#include <colorchat>
-#else
-#define Red print_team_red
-#define Blue print_team_blue
-#endif
+#include <custom_color_chat>
 
 #pragma semicolon 1
 
@@ -1096,7 +1091,7 @@ public pre_reassignPlayersFlags(id)
  */
 _reassignPlayersFlags(id = 0)
 {
-    addUsersToGlobalArray()
+	addUsersToGlobalArray();
 
 	for (new i = 1; i <= get_maxplayers(); ++i) {
 		if (! is_user_connected(i)) {
@@ -2225,6 +2220,17 @@ bool:isDebug()
 {
 	return bool:get_pcvar_num(cvar_debug);
 }
+
+// ------------------------------------------------- Versions Compatibility ----------------------------------------------------
+
+#if !defined md5
+
+md5(const szString[], md5buffer[34])
+{
+	hash_string(szString, Hash_Md5, md5buffer, 34);
+}
+
+#endif
 
 // --------------------------------------------------------- Stocks ------------------------------------------------------------
 
