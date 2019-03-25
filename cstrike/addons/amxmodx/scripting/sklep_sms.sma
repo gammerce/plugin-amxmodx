@@ -1422,6 +1422,7 @@ public getServerData(FailState, Handle:Query, Error[], Errorcode)
 		}
 		
 		g_blocked = true;
+		return;
 	}
 
 	if (SQL_NumResults(Query) <= 0) {
@@ -1679,6 +1680,7 @@ public validateLicense()
 			g_serverIp, g_serverPort, serverNameEscaped, VERSION
 		);
 	}
+	
 	makeRequest("POST", "license.sklep-sms.pl/v1/authorization/server", headers, body, "onValidateLicenseResponse");
 }
 
@@ -1966,28 +1968,30 @@ _make_error(message[]) {
  */
 bool:makeRequest(const method[], const url[MAX_URL + 1], const headers[], const body[], const callback[MAX_FUNCTION + 1] = "", playerId = 0)
 {
-	static host[MAX_URL_HOST + 1], path[MAX_URL_PATH + 1];
-	host[0] = '^0';
-	path[0] = '^0';
-	split(url, host, charsmax(host), path, charsmax(path), "/");
+	new httpRequest[MAX_HTTP_REQUEST + 1], socketId;
 	
-	new socketId = mySocketOpen(host, 80, playerId);
-	if (socketId == SS_ERROR) {
-		return false;
+	{
+		new host[MAX_URL_HOST + 1], path[MAX_URL_PATH + 1];
+		split(url, host, charsmax(host), path, charsmax(path), "/");
+		
+		socketId = mySocketOpen(host, 80, playerId);
+		if (socketId == SS_ERROR) {
+			return false;
+		}
+		
+		formatex(httpRequest, charsmax(httpRequest),
+			"%s /%s HTTP/1.1^r^n\
+			Host: %s^r^n\
+			Content-Length: %d^r^n\
+			Content-Type: application/x-www-form-urlencoded; charset=UTF-8^r^n\
+			User-Agent: amxmodx^r^n\
+			%s\
+			^r^n\
+			%s",
+			method, path, host, strlen(body), headers, body
+		);
 	}
 	
-	new httpRequest[MAX_HTTP_REQUEST + 1];
-	formatex(httpRequest, charsmax(httpRequest),
-		"%s /%s HTTP/1.1^r^n\
-		Host: %s^r^n\
-		Content-Length: %d^r^n\
-		Content-Type: application/x-www-form-urlencoded; charset=UTF-8^r^n\
-		User-Agent: amxmodx^r^n\
-		%s\
-		^r^n\
-		%s",
-		method, path, host, strlen(body), headers, body
-	);
 	socket_send(g_sockets[socketId], httpRequest, strlen(httpRequest));
 	
 	/*
@@ -1996,7 +2000,6 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const headers[], const 
 	new requestData[MAX_REQUEST_DATA + 1];
 	
 	replace_all(httpRequest, charsmax(httpRequest), "^"", "^^^"");
-	
 	formatex(requestData, charsmax(requestData), "%d ^"%s^" ^"%s^"", playerId, httpRequest, callback);
 	
 	set_task(0.6, "mySocketCheckData", TASK_SOCKET_CHECK + socketId, requestData, strlen(requestData));
@@ -2022,7 +2025,7 @@ mySocketOpen(const host[], port = 80, playerId = 0)
 	if (g_sockets[socketId]) {
 		mySocketClose(socketId);
 	}
-	
+
 	new error;
 	g_sockets[socketId] = socket_open(host, port, SOCKET_TCP, error);
 	
