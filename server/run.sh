@@ -5,4 +5,4 @@ DIR="$( cd "$( dirname $( dirname "${BASH_SOURCE[0]}" ) )" && pwd )"
 # RUN
 IMAGE_NAME="cs16"
 docker build -t ${IMAGE_NAME} -f "$DIR/server/Dockerfile" . \
-&& docker run --rm -it -p 27015:27015 ${IMAGE_NAME}
+&& docker run --rm -it -p 27015:27015 --network sklepsms_default --name sklepsms_cs16 ${IMAGE_NAME}

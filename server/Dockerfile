@@ -31,7 +31,7 @@ RUN curl -sqL "http://www.amxmodx.org/release/amxmodx-$amxmod_version-base-linux
 RUN curl -sqL "http://www.amxmodx.org/release/amxmodx-$amxmod_version-cstrike-linux.tar.gz" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
 
 # Add shopsms
-RUN sed -i '1s/^/sklep_sms.amxx\n/' /home/steam/dedicated/cstrike/addons/amxmodx/configs/plugins.ini
+RUN sed -i '1s/^/sklep_sms.amxx debug\n/' /home/steam/dedicated/cstrike/addons/amxmodx/configs/plugins.ini
 ADD cstrike/addons/amxmodx/plugins/* /home/steam/dedicated/cstrike/addons/amxmodx/plugins/
 ADD cstrike/addons/amxmodx/configs/* /home/steam/dedicated/cstrike/addons/amxmodx/configs/
 

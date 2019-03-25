@@ -1603,7 +1603,7 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode)
 			replace(g_shopPageUrl, charsmax(g_shopPageUrl), "http://", "");
 			
 			// Remove trailing slash
-			if (g_shopPageUrl[strlen(g_shopPageUrl) - 1] == '/') {
+			if (strlen(g_shopPageUrl) && g_shopPageUrl[strlen(g_shopPageUrl) - 1] == '/') {
 				g_shopPageUrl[strlen(g_shopPageUrl) - 1] = '^0';
 			}
 			
