@@ -35,13 +35,9 @@ ADD server/files/plugins.ini /home/steam/dedicated/cstrike/addons/metamod/plugin
 RUN curl -sqL "http://www.amxmodx.org/release/amxmodx-$amxmod_version-base-linux.tar.gz" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
 RUN curl -sqL "http://www.amxmodx.org/release/amxmodx-$amxmod_version-cstrike-linux.tar.gz" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
 
-# Add curl
-RUN curl -sSL "https://github.com/Polarhigh/AmxxCurl/releases/download/v1.0.4/amxx_curl_linux_v1.0.4.zip" > /tmp/curl.zip
-RUN unzip -d /tmp/curl /tmp/curl.zip
-RUN mv /tmp/curl/curl_amxx_i386.so /home/steam/dedicated/cstrike/addons/amxmodx/modules/
-
 # Add shopsms
 RUN sed -i '1s/^/sklep_sms.amxx debug\n/' /home/steam/dedicated/cstrike/addons/amxmodx/configs/plugins.ini
+ADD cstrike/addons/amxmodx/modules/* /home/steam/dedicated/cstrike/addons/amxmodx/modules/
 ADD cstrike/addons/amxmodx/configs/* /home/steam/dedicated/cstrike/addons/amxmodx/configs/
 ADD cstrike/addons/amxmodx/plugins/* /home/steam/dedicated/cstrike/addons/amxmodx/plugins/
 
