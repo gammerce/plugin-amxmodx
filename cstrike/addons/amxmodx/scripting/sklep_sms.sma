@@ -1,7 +1,7 @@
 #include <amxmodx>
 #include <amxmisc>
 #include <sqlx>
-#include <sockets>
+#include <curl>
 #include <shop_sms_const>
 #include <custom_color_chat>
 
@@ -17,10 +17,6 @@ forward amxx_admin_access(id, flags, timestamp);
 #define TASK_WYSWIETL 2000
 #define TASK_CHECK_USER 5000
 #define TASK_SHOW_MENU_SERVICE_TYPES 8000
-
-// Sockets
-#define TASK_SOCKET_CHECK 6000
-#define TASK_SOCKET_TIME_OUT 7000
 
 // Klawisze ktore mozna uzyc w menu
 #define KEYS (1<<0)|(1<<9) // Keys: 10
@@ -93,6 +89,20 @@ new sklep_komenda[MAX_COMMAND + 1], przeladuj_komenda[MAX_COMMAND + 1], uslugi_k
 // Sciezka do pliku konfiguracyjnego
 new config_path[128];
 
+// Requests
+const MAX_RESPONSE = 256;
+const MAX_RESPONSE_COUNT = 5;
+new g_requestCounter = 0;
+new g_responses[MAX_RESPONSE_COUNT][MAX_RESPONSE + 1];
+new bool:g_requestsInProgress[MAX_RESPONSE_COUNT];
+
+enum requestStruct {
+	RequestId,
+	curl_slist: RequestHeaders,
+	RequestCallback[MAX_FUNCTION + 1],
+	RequestPlayerId,
+};
+
 //Licencja
 new license_token[63];
 new bool:g_footer = true;
@@ -121,14 +131,6 @@ new Array:g_playersFlags;
 new bool:g_playersLoaded = false;
 new g_lastReassign;
 
-// Sockets
-#define SOCKET_OK -1
-#define SOCKET_TIMEOUT -2
-
-const MAX_SOCKETS = 40;
-new g_sockets[MAX_SOCKETS];
-new g_socketCounter = 0;
-
 // Settings
 new st_currency[16],
 	st_signature[128], 
@@ -139,7 +141,6 @@ new st_currency[16],
 	Float:st_vat;
 	
 new g_shopPageUrl[MAX_URL + 1];
-//new g_shopPagePort = 80;
 
 new bool:g_shopRegistered = false;
 new bool:g_AmxbansExists = false;
@@ -829,44 +830,38 @@ public kodZwrotny(id)
 			g_shopPageUrl, st_random_key_md5, u_service_id, b_types[id], u_auth_data, u_password, g_serverId, u_sms_service, u_sms_code, price[pTARIFF], ip
 		);
 	}
-	
-	makeRequest("GET", url, "", "", "getWebPagePurchaseService", id);
+
+	if (!makeRequest("GET", url, 0, "", "getWebPagePurchaseService", id)) {
+		client_print_color(id, Red, "^4[%s] ^1Nie udalo sie wykonac zapytania HTTP.", PREFIX);
+	}
 }
 
-public getWebPagePurchaseService(const content[], playerId, socketStatus, statusCode)
+public getWebPagePurchaseService(const content[], playerId, CURLcode: code, statusCode)
 {
-	switch (socketStatus) {
-		case SOCKET_OK: {
-			if (statusCode >= 300) {
-				client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrociło bledny http code.", PREFIX);
-				return;
-			}
-			
-			new return_value[33], szText[128], szPositive[3], szBsid[16], szWarnings[256];
-	
-			getXMLValue(content, "return_value", return_value, charsmax(return_value));
-			getXMLValue(content, "text", szText, charsmax(szText));
-			getXMLValue(content, "positive", szPositive, charsmax(szPositive));
-			getXMLValue(content, "bsid", szBsid, charsmax(szBsid));
-			getXMLValue(content, "warnings", szWarnings, charsmax(szWarnings));
-			
-			trim(return_value);
-			trim(szText);
-			trim(szWarnings);
-	
-			purchaseServicePost(playerId, return_value, szText, str_to_num(szPositive), str_to_num(szBsid), szWarnings);
-		}
-		
-		case SOCKET_TIMEOUT: {
-			log_to_file(LOG_FILE, "Zakup nie zostal sfinalizowany z powodu przekroczenia limitu czasu polaczenia.");
-			client_print_color(playerId, Red, "^4[%s] ^1Zakup ^3nie zostal sfinalizowany ^1z powodu przekroczenia limitu czasu polaczenia.", PREFIX);
-		}
-		
-		default: {
-			log_to_file(LOG_FILE, "Zakup nie zostal sfinalizowany z nieznanych powodow.");
-			client_print_color(playerId, Red, "^4[%s] ^1Zakup ^3nie zostal sfinalizowany ^1z nieznanych powodow.", PREFIX);
-		}
+	if (code != CURLE_OK) {
+		log_to_file(LOG_FILE, "Zakup nie zostal sfinalizowany z nieznanych powodow. Error: %d", code);
+		client_print_color(playerId, Red, "^4[%s] ^1Zakup ^3nie zostal sfinalizowany ^1z nieznanych powodow. Error: %d", PREFIX, code);
+		return;
 	}
+
+	if (statusCode >= 300) {
+		client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrociło bledny http code.", PREFIX);
+		return;
+	}
+	
+	new return_value[33], szText[128], szPositive[3], szBsid[16], szWarnings[256];
+
+	getXMLValue(content, "return_value", return_value, charsmax(return_value));
+	getXMLValue(content, "text", szText, charsmax(szText));
+	getXMLValue(content, "positive", szPositive, charsmax(szPositive));
+	getXMLValue(content, "bsid", szBsid, charsmax(szBsid));
+	getXMLValue(content, "warnings", szWarnings, charsmax(szWarnings));
+	
+	trim(return_value);
+	trim(szText);
+	trim(szWarnings);
+
+	purchaseServicePost(playerId, return_value, szText, str_to_num(szPositive), str_to_num(szBsid), szWarnings);
 }
 
 public purchaseServicePost(id, const return_value[], const szText[], positive, bsid, const szWarnings[])
@@ -1594,15 +1589,6 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode)
 		else if (equali(key, "shop_url")) {
 			copy(g_shopPageUrl, charsmax(g_shopPageUrl), value);
 			
-			// TODO: implement https
-			// if (replace(g_shopPageUrl, charsmax(g_shopPageUrl), "https://", "")) {
-			// 	g_shopPagePort = 80;
-			// } else if (replace(g_shopPageUrl, charsmax(g_shopPageUrl), "http://", "")) {
-			// 	g_shopPagePort = 80;
-			// }
-			replace(g_shopPageUrl, charsmax(g_shopPageUrl), "https://", "");
-			replace(g_shopPageUrl, charsmax(g_shopPageUrl), "http://", "");
-			
 			// Remove trailing slash
 			if (strlen(g_shopPageUrl) && g_shopPageUrl[strlen(g_shopPageUrl) - 1] == '/') {
 				g_shopPageUrl[strlen(g_shopPageUrl) - 1] = '^0';
@@ -1659,10 +1645,10 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode)
 	}
 }
 
-// Funkcja ktora wysyla zapytanie do serwera o sprawdzenie czy licencja jest prawidlowa
 public validateLicense()
 {
-	new headers[MAX_HEADERS + 1];
+	new curl_slist: headers;
+	new header[MAX_HEADERS + 1];
 	new body[MAX_BODY + 1];
 	
 	{
@@ -1670,10 +1656,11 @@ public validateLicense()
 		get_cvar_string("hostname", g_serverName, charsmax(g_serverName));
 		StringURLEncode(g_serverName, serverNameEscaped, charsmax(serverNameEscaped));
 
-		formatex(headers, charsmax(headers),
-			"Authorization: %s^r^n",
+		formatex(header, charsmax(header),
+			"Authorization: %s",
 			license_token
 		);
+		headers = curl_slist_append(headers, header);
 
 		formatex(body, charsmax(body),
 			"platform=amxmodx&url=%s:%s&name=%s&version=%s",
@@ -1681,64 +1668,56 @@ public validateLicense()
 		);
 	}
 	
-	makeRequest("POST", "license.sklep-sms.pl/v1/authorization/server", headers, body, "onValidateLicenseResponse");
+	makeRequest("POST", "https://license.sklep-sms.pl/v1/authorization/server", headers, body, "onValidateLicenseResponse");
 }
 
-public onValidateLicenseResponse(const content[], playerId, status, statusCode)
+public onValidateLicenseResponse(const content[], playerId, CURLcode: code, statusCode)
 {
-	switch (status) {
-		case SOCKET_OK: {
-			g_shopRegistered = false;
-
-			if (statusCode == 401) {
-				_errorInvalidToken();
-				return;
-			}
-
-			if (statusCode == 422) {
-				_errorValidationError();
-				return;
-			}
-
-			if (statusCode == 402) {
-				_errorPaymentRequired();
-				return;
-			}
-
-			if (statusCode >= 300) {
-				_errorInvalidResponse(statusCode);
-				return;
-			}
-		
-			new text[32 + 1];
-			getXMLValue(content, "text", text, charsmax(text));
-			trim(text);
-
-			if (!equal(text, "ok")) {
-				g_shopRegistered = false;
-				log_to_file(LOG_FILE, "%s", content);
-				_errorUnknown();
-				return;
-			}
-	
-			new footer[2];
-			getXMLValue(content, "footer", footer, charsmax(footer));
-			g_footer = str_to_num(footer) ? true : false;
-			
-			g_shopRegistered = true;
-			log_amx("Walidacja licencji zostala zakonczona pomyslnie");
-		}
-		
-		case SOCKET_TIMEOUT: {
-			g_shopRegistered = false;
-			log_to_file(LOG_FILE, "Licencja nie zostala zwalidowana z powodu przekroczenia limitu czasu polaczenia.");
-		}
-		
-		default: {
-			g_shopRegistered = false;
-			log_to_file(LOG_FILE, "Licencja nie zostala zwalidowana z nieznanych powodow.");
-		}
+	if (code != CURLE_OK) {
+		g_shopRegistered = false;
+		log_to_file(LOG_FILE, "Licencja nie zostala zwalidowana z nieznanych powodow. Error: %d", code);
+		return;
 	}
+	
+	g_shopRegistered = false;
+
+	if (statusCode == 401) {
+		_errorInvalidToken();
+		return;
+	}
+
+	if (statusCode == 422) {
+		_errorValidationError();
+		return;
+	}
+
+	if (statusCode == 402) {
+		_errorPaymentRequired();
+		return;
+	}
+
+	if (statusCode >= 300) {
+		_errorInvalidResponse(statusCode);
+		return;
+	}
+
+	new text[32 + 1];
+	getXMLValue(content, "text", text, charsmax(text));
+	trim(text);
+
+	if (!equal(text, "ok")) {
+		g_shopRegistered = false;
+		log_to_file(LOG_FILE, "%s", content);
+		_errorUnknown();
+		return;
+	}
+
+	new footer[2];
+	getXMLValue(content, "footer", footer, charsmax(footer));
+	g_footer = str_to_num(footer) ? true : false;
+	
+	g_shopRegistered = true;
+	log_amx("Walidacja licencji zostala zakonczona pomyslnie");
 }
 
 public getTransactionServiceData(FailState, Handle:Query, Error[], Errorcode)
@@ -1957,230 +1936,94 @@ _make_error(message[]) {
 /**
  * Make HTTP request
  *
- * @param const char[]	method			GET POST PUT etc.
- * @param const char[]	url				path (eg. example.com/shop/ddd)
- * @param const char[]	headers			headers
- * @param const char[]	body			body params
- * @param const char[]	callback		callback function
- * @param int			playerId		id of the player
+ * @param const char[]	    method			GET POST PUT etc.
+ * @param const char[]	    url				path (eg. example.com/shop/ddd)
+ * @param const curl_slist	headers			headers
+ * @param const char[]	    body			body params
+ * @param const char[]	    callback		callback function
+ * @param const int		    playerId		id of the player
  * 
  * @return bool
  */
-bool:makeRequest(const method[], const url[MAX_URL + 1], const headers[], const body[], const callback[MAX_FUNCTION + 1] = "", playerId = 0)
+bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: headers, const body[], const callback[MAX_FUNCTION + 1] = "", const playerId = 0)
 {
-	new httpRequest[MAX_HTTP_REQUEST + 1], socketId;
-	
-	{
-		new host[MAX_URL_HOST + 1], path[MAX_URL_PATH + 1];
-		split(url, host, charsmax(host), path, charsmax(path), "/");
-		
-		socketId = mySocketOpen(host, 80, playerId);
-		if (socketId == SS_ERROR) {
-			return false;
-		}
-		
-		formatex(httpRequest, charsmax(httpRequest),
-			"%s /%s HTTP/1.1^r^n\
-			Host: %s^r^n\
-			Content-Length: %d^r^n\
-			Content-Type: application/x-www-form-urlencoded; charset=UTF-8^r^n\
-			User-Agent: amxmodx^r^n\
-			%s\
-			^r^n\
-			%s",
-			method, path, host, strlen(body), headers, body
-		);
-	}
-	
-	socket_send(g_sockets[socketId], httpRequest, strlen(httpRequest));
-	
-	/*
-	 * Utworzenie nowego pseudo watku oczekujacego na odpowiedz
-	 */
-	new requestData[MAX_REQUEST_DATA + 1];
-	
-	replace_all(httpRequest, charsmax(httpRequest), "^"", "^^^"");
-	formatex(requestData, charsmax(requestData), "%d ^"%s^" ^"%s^"", playerId, httpRequest, callback);
-	
-	set_task(0.6, "mySocketCheckData", TASK_SOCKET_CHECK + socketId, requestData, strlen(requestData));
-	set_task(10.0, "mySocketTimeout", TASK_SOCKET_TIME_OUT + socketId, requestData, strlen(requestData));
-	
-	return true;
+	new CURL: handle, curl_slist: newHeaders, data[requestStruct];
+   	
+   	handle = curl_easy_init();
+   	if (!handle) {
+   		log_to_file(LOG_FILE, "Nie udalo sie utworzyc uchwytu CURL.");
+   		return false;
+   	}
+
+   	new requestId = g_requestCounter++ % MAX_RESPONSE_COUNT;
+
+   	if (g_requestsInProgress[requestId]) {
+   		log_to_file(LOG_FILE, "Pula requestetow jest pelna. Request nie zostal wykonany.");
+   		return false;
+   	}
+
+	g_requestsInProgress[requestId] = true;
+	data[RequestId] = requestId;
+	data[RequestPlayerId] = playerId;
+	format(data[RequestCallback], MAX_FUNCTION + 1, callback);
+   	newHeaders = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded; charset=UTF-8");
+   	data[RequestHeaders] = newHeaders;
+   	
+   	curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, 0);
+   	curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, method);
+   	curl_easy_setopt(handle, CURLOPT_URL, url);
+   	curl_easy_setopt(handle, CURLOPT_USERAGENT, "amxmodx");
+   	curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+   	curl_easy_setopt(handle, CURLOPT_COPYPOSTFIELDS, body);
+   	curl_easy_setopt(handle, CURLOPT_WRITEDATA, data[RequestId]);
+   	curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, "@responseWrite");
+
+   	curl_easy_perform(handle, "@requestComplete", data, requestStruct);
+
+   	return true;
 }
 
-// -------------------------------------------------------- Sockets ------------------------------------------------------------
-
-/**
- * Open a new socket
- *
- * @param const char[]	host		host name
- * @param int			port
- * @param int			playerId	id of the player
- *
- * @return int id of opened socket
- */
-mySocketOpen(const host[], port = 80, playerId = 0)
+@responseWrite(const data[], const size, const nmemb, const requestId)
 {
-	new socketId = ++g_socketCounter % MAX_SOCKETS;
-	if (g_sockets[socketId]) {
-		mySocketClose(socketId);
-	}
-
-	new error;
-	g_sockets[socketId] = socket_open(host, port, SOCKET_TCP, error);
-	
-	if (error) {
-		if (is_user_connected(playerId)) {
-			client_print_color(playerId, Red, "^4[%s] ^1Nie udalo sie utworzyc socketu.", PREFIX);
-		}
-		
-		log_to_file(LOG_FILE, "Nie mozna polaczyc sie z hostem: %s:%d. Blad: %d.", host, port, error);
-		
-		return SS_ERROR;
-	}
-	
-	return socketId;
+	// We want to get "nmemb" chars from "data", because sometime there is some noise at the end od "data"
+	format(g_responses[requestId], min(nmemb, MAX_RESPONSE), data);
+    
+	// tell curl how many bytes we handled
+    return size * nmemb;
 }
 
-public mySocketCheckData(const requestData[], socketId)
-{	
-	socketId -= TASK_SOCKET_CHECK;
-	
-	if (! vc_socket_change(g_sockets[socketId])) {
-		set_task(0.6, "mySocketCheckData", TASK_SOCKET_CHECK + socketId, requestData, strlen(requestData));
-		return;
-	}
-	
-	new httpResponseContent[MAX_HTTP_RESPONSE + 1], statusCode, statusMessage[MAX_HTTP_STATUS_MESSAGE + 1];
-	
-	statusCode = mySocketReceiveData(socketId, httpResponseContent, charsmax(httpResponseContent), statusMessage, charsmax(statusMessage));
-	
-	// Parse request data
-	new httpRequest[MAX_HTTP_REQUEST], function[MAX_FUNCTION + 1], szPlayerId[2 + 1], playerId;
-	parse(requestData, szPlayerId, charsmax(szPlayerId), httpRequest, charsmax(httpRequest), function, charsmax(function));
-	playerId = str_to_num(szPlayerId);
-	
-	if (! statusCode || statusCode >= 300) {
-		log_to_file(LOG_FILE, "Zapytanie zwrocilo blad: %d %s^n%s", statusCode, statusMessage, httpRequest);
-	}
-	
-	mySocketCallCallback(function, httpResponseContent, playerId, SOCKET_OK, statusCode);
-}
-
-/**
- * Receive data from socket
- *
- * @return int status code
- */
-mySocketReceiveData(socketId, httpResponseContent[], httpResponseContentLen, statusMessage[], statusMessageLen)
+@requestComplete(CURL: curl, CURLcode: code, const data[requestStruct])
 {
-	static httpResponse[MAX_HTTP_RESPONSE + 1], httpResponseHeader[128], tmp[1];
-	httpResponse[0] = '^0';
-	httpResponseHeader[0] = '^0';
-	
-	socket_recv(g_sockets[socketId], httpResponse, charsmax(httpResponse));
-	mySocketClose(socketId);
-	
-	if (isDebug()) {
-		log_to_file(DEBUG_FILE, "Received data: %s", httpResponse);
-	}
-	
-	// Parse received data
-	new headerFirstLine[128], httpInfo[16], status[MAX_HTTP_STATUS + 1], szStatusCode[MAX_HTTP_STATUS_CODE + 1];
-		
-	// Split header from content
-	split(httpResponse, httpResponseHeader, charsmax(httpResponseHeader), httpResponseContent, httpResponseContentLen, "^r^n^r^n");
-		
-	// Extract first line of header
-	split(httpResponseHeader, headerFirstLine, charsmax(headerFirstLine), tmp, charsmax(tmp), "^r^n");
-		
-	// Split first line: httpInfo status
-	split(headerFirstLine, httpInfo, charsmax(httpInfo), status, charsmax(status), " ");
-		
-	// Split status: code message
-	split(status, szStatusCode, charsmax(szStatusCode), statusMessage, statusMessageLen, " ");
-	
-	return str_to_num(szStatusCode);
+    if (code != CURLE_OK) {
+        new szError[128];
+        curl_easy_strerror(code, szError, charsmax(szError));
+        log_to_file(LOG_FILE, "CURL error: %d %s", code, szError);
+    }
+
+	new statusCode;
+	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, statusCode);
+
+    runRequestCallback(data[RequestCallback], g_responses[data[RequestId]], data[RequestPlayerId], code, statusCode);
+    g_requestsInProgress[data[RequestId]] = false;
+
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(data[RequestHeaders]);
 }
 
-/**
- * Function called on socket connection timeout
- *
- * @param char[]	requestData
- * @param int		socketId	task id
- */
-public mySocketTimeout(const requestData[], socketId)
-{	
-	socketId -= TASK_SOCKET_TIME_OUT;
-	mySocketClose(socketId);
-	
-	// Parse request data
-	new httpRequest[MAX_HTTP_REQUEST + 1], szPlayerId[4], function[MAX_FUNCTION + 1], playerId;
-	parse(requestData, szPlayerId, charsmax(szPlayerId), httpRequest, charsmax(httpRequest), function, charsmax(function));
-	playerId = str_to_num(szPlayerId);
-	
-	log_to_file(LOG_FILE, "Przekroczono limit czasu zapytania HTTP^n%s", httpRequest);
-	
-	if (is_user_connected(playerId)) {
-		client_print_color(playerId, Red, "^4[%s] ^1Przekroczono limit czasu zapytania HTTP.", PREFIX);
-	}
-	
-	mySocketCallCallback(function, _, playerId, SOCKET_TIMEOUT);
-}
-
-mySocketCallCallback(const function[], const httpResponseContent[] = "", playerId, socketStatus, statusCode = 0)
+runRequestCallback(const function[], const httpResponseContent[], playerId, CURLcode: code, statusCode)
 {
-	if (! strlen(function)) {
-		return;
-	}
-
-	if (callfunc_begin(function) == 1) {
+	if (!strlen(function) || callfunc_begin(function) == 1) {
 		callfunc_push_str(httpResponseContent);
-		callfunc_push_int(playerId); // player id
-		callfunc_push_int(socketStatus);
+		callfunc_push_int(playerId);
+		callfunc_push_int(code);
 		callfunc_push_int(statusCode);
 		callfunc_end();
 	} else {
-		log_to_file(LOG_FILE, "Funkcja %s nie zostala prawidlowo wywolana.", function);
+		log_to_file(LOG_FILE, "Funkcja nie zostala prawidlowo wywolana [%s]", function);
 	}
 }
 
-//Array:mySocketParseHeader(const header[])
-//{
-//	new Array:explodedHeader;
-//	explodedHeader = ArrayCreate(e_KeyValue);
-//
-//	new headerCopy[512];
-//	formatex(headerCopy, charsmax(headerCopy), "%s", header);
-//	while (strlen(headerCopy)) {
-//		new line[256], pair[e_KeyValue];
-//		
-//		split(headerCopy, line, charsmax(line), headerCopy, charsmax(headerCopy), "^r^n");
-//		split(line, pair[kvKEY], 127, pair[kvVALUE], 127, ":");
-//		
-//		trim(pair[kvKEY]);
-//		trim(pair[kvVALUE]);
-//		
-//		ArrayPushArray(explodedHeader, pair);
-//	}
-//	
-//	return explodedHeader;
-//}
-
-/**
- * Close socket
- *
- * @param int	socketId
- */
-public mySocketClose(socketID)
-{	
-	socket_close(g_sockets[socketID]);
-	g_sockets[socketID] = 0;
-	remove_task(TASK_SOCKET_CHECK + socketID);
-	remove_task(TASK_SOCKET_TIME_OUT + socketID);
-}
-
-// ----------------------------------------------------- End of sockets --------------------------------------------------------
+// ----------------------------------------------------- End of requests --------------------------------------------------------
 
 _getServicePluginByID(const id[])
 {
@@ -2232,15 +2075,6 @@ vc_md5(const szString[], md5buffer[34])
 	hash_string(szString, Hash_Md5, md5buffer, 34);
 	#else
 	md5(szString, md5buffer);
-	#endif
-}
-
-vc_socket_change(socket)
-{
-	#if defined socket_is_readable
-	return socket_is_readable(socket);
-	#else
-	return socket_change(socket);
 	#endif
 }
 

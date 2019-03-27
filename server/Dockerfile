@@ -3,6 +3,11 @@ FROM cm2network/steamcmd
 ARG metamod_version=1.20
 ARG amxmod_version=1.8.2
 
+# Install unzip
+USER root
+RUN apt-get install -y unzip curl
+USER steam
+
 # Install HLDS
 RUN /home/steam/steamcmd/steamcmd.sh +login anonymous +force_install_dir /home/steam/dedicated +app_update 90 validate +quit; exit 0
 RUN /home/steam/steamcmd/steamcmd.sh +login anonymous +force_install_dir /home/steam/dedicated +app_update 90 validate +quit; exit 0
@@ -29,6 +34,11 @@ ADD server/files/plugins.ini /home/steam/dedicated/cstrike/addons/metamod/plugin
 # Install AMX mod X
 RUN curl -sqL "http://www.amxmodx.org/release/amxmodx-$amxmod_version-base-linux.tar.gz" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
 RUN curl -sqL "http://www.amxmodx.org/release/amxmodx-$amxmod_version-cstrike-linux.tar.gz" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
+
+# Add curl
+RUN curl -sSL "https://github.com/Polarhigh/AmxxCurl/releases/download/v1.0.4/amxx_curl_linux_v1.0.4.zip" > /tmp/curl.zip
+RUN unzip -d /tmp/curl /tmp/curl.zip
+RUN mv /tmp/curl/curl_amxx_i386.so /home/steam/dedicated/cstrike/addons/amxmodx/modules/
 
 # Add shopsms
 RUN sed -i '1s/^/sklep_sms.amxx debug\n/' /home/steam/dedicated/cstrike/addons/amxmodx/configs/plugins.ini
