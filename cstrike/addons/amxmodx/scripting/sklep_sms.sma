@@ -110,6 +110,8 @@ new g_serverIp[MAX_IP + 1];
 new g_serverPort[MAX_PORT + 1];
 new g_serverName[MAX_SERVER_NAME + 1];
 new bool:g_blocked = false;
+new bool:g_validationAttempt = false;
+new g_signature;
 
 // MySQL
 new const TABLE_PREFIX[] = "ss_";
@@ -251,6 +253,8 @@ public plugin_init()
 	if (show_info) {
 		set_task(137.0, "reklama", _, _, _, "b");
 	}
+
+	g_signature = random_num(1, 99999999);
 }
 
 public loadCvars()
@@ -1622,7 +1626,7 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode)
 	}
 	
 	// Sprawdzamy czy licencja jest prawidłowa
-	validateLicense();
+	_validateLicense();
 	
 	if (SqlTuple) {
 		// Pobranie numerow sms
@@ -1645,14 +1649,14 @@ public getSettings(FailState, Handle:Query, Error[], Errorcode)
 	}
 }
 
-public validateLicense()
+_validateLicense()
 {
 	new curl_slist: headers;
 	new header[MAX_HEADERS + 1];
 	new body[MAX_BODY + 1];
 	
 	{
-		new serverNameEscaped[MAX_SERVER_NAME * 2 + 1];
+		new serverNameEscaped[MAX_SERVER_NAME * 2 + 1], signature;
 		get_cvar_string("hostname", g_serverName, charsmax(g_serverName));
 		StringURLEncode(g_serverName, serverNameEscaped, charsmax(serverNameEscaped));
 
@@ -1663,8 +1667,8 @@ public validateLicense()
 		headers = curl_slist_append(headers, header);
 
 		formatex(body, charsmax(body),
-			"platform=amxmodx&url=%s:%s&name=%s&version=%s",
-			g_serverIp, g_serverPort, serverNameEscaped, VERSION
+			"platform=amxmodx&url=%s:%s&name=%s&version=%s&signature=%d",
+			g_serverIp, g_serverPort, serverNameEscaped, VERSION, g_signature
 		);
 	}
 	
@@ -1673,6 +1677,13 @@ public validateLicense()
 
 public onValidateLicenseResponse(const content[], playerId, CURLcode: code, statusCode)
 {
+	if (g_validationAttempt) {
+		_errorForbidden();
+		return;
+	}
+
+	g_validationAttempt = true;
+
 	if (code != CURLE_OK) {
 		g_shopRegistered = false;
 		log_to_file(LOG_FILE, "Licencja nie zostala zwalidowana z nieznanych powodow. Error: %d", code);
@@ -1696,6 +1707,14 @@ public onValidateLicenseResponse(const content[], playerId, CURLcode: code, stat
 		return;
 	}
 
+	if (statusCode == 403) {
+		new text[128 + 1];
+		getXMLValue(content, "text", text, charsmax(text));
+		trim(text);
+		_errorForbidden(text);
+		return;
+	}
+
 	if (statusCode >= 300) {
 		_errorInvalidResponse(statusCode);
 		return;
@@ -1709,6 +1728,15 @@ public onValidateLicenseResponse(const content[], playerId, CURLcode: code, stat
 		g_shopRegistered = false;
 		log_to_file(LOG_FILE, "%s", content);
 		_errorUnknown();
+		return;
+	}
+
+	new szSignature[16], signature;
+	getXMLValue(content, "signature", szSignature, charsmax(szSignature));
+	signature = str_to_num(szSignature);
+
+	if (signature != g_signature) {
+		_errorForbidden();
 		return;
 	}
 
@@ -1897,8 +1925,13 @@ _errorInvalidToken() {
 }
 
 _errorPaymentRequired() {
-	log_to_file(LOG_FILE, "Error 14 - Licencja nie wspiera tego typu serwera lub przekroczono limit stron WWW.");
-	g_blocked = true;
+	_make_error("Error 14 - Licencja nie wspiera tego typu serwera lub przekroczono limit stron WWW.");
+}
+
+_errorForbidden(const text[] = "") {
+	new message[128 + 1];
+	formatex(message, charsmax(message), "Errro 15 - Blad licencji. %s", text);
+	_make_error(message);
 }
 
 _error21() {
