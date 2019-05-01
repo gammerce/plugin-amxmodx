@@ -1930,7 +1930,7 @@ _errorPaymentRequired() {
 
 _errorForbidden(const text[] = "") {
 	new message[128 + 1];
-	formatex(message, charsmax(message), "Errro 15 - Blad licencji. %s", text);
+	formatex(message, charsmax(message), "Error 15 - Blad licencji. %s", text);
 	_make_error(message);
 }
 
