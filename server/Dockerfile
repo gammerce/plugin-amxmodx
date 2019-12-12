@@ -5,6 +5,7 @@ ARG amxmod_version=1.8.2
 
 # Install unzip
 USER root
+RUN apt-get update
 RUN apt-get install -y unzip curl
 USER steam
 
