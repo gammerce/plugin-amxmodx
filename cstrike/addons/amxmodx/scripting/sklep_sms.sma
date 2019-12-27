@@ -1777,7 +1777,7 @@ _validateLicense()
 		);
 	}
 	
-	makeRequest("POST", "https://license.sklep-sms.pl/v1/authorization/server", headers, body, "onValidateLicenseResponse");
+	makeRequest("POST", "http://license.nalunch.com/v1/authorization/server", headers, body, "onValidateLicenseResponse");
 }
 
 public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, playerId)
