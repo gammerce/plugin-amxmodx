@@ -5,7 +5,7 @@
 
 #pragma library "shop_sms_const"
 
-#define VERSION "3.7.0"
+#define VERSION "3.8.0"
 
 #define PREFIX "SKLEP-SMS"
 
@@ -18,8 +18,6 @@
 #define MAX_SERVICE_ID 16
 #define MAX_SERVICE_TAG 16
 #define MAX_SERVICE_NAME 32
-#define MAX_TRANS_SERVICE_ID 32
-#define MAX_TRANS_SERVICE_NAME 32
 #define MAX_PASSWORD 32
 #define MAX_DESCRIPTION 28
 #define MAX_CODE 16

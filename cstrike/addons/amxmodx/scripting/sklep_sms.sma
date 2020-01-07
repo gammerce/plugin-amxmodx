@@ -2,6 +2,7 @@
 #include <amxmisc>
 #include <sqlx>
 #include <curl>
+#include <regex>
 #include <shop_sms_const>
 #include <custom_color_chat>
 
@@ -29,6 +30,7 @@ new const LOG_FILE[] = "sklep_sms.log";
 const MAX_COMMAND = 32;
 const MAX_CONTACT = 64;
 const MAX_RANDOM_KEY = 32;
+const MAX_PAYMENT_MODULE_ID = 32;
 
 enum e_KeyValue {
 	kvKEY[128],
@@ -50,14 +52,6 @@ enum e_Service {
 new Array:service_plugins, 
 	Array:service_ids, 
 	Array:services;
-
-// Modul platnosci
-enum e_TransactionService {
-	tsID[MAX_TRANS_SERVICE_ID + 1], 
-	tsNAME[MAX_TRANS_SERVICE_NAME + 1], 
-	SMS_TEXT[MAX_SMS_TEXT + 1], 
-};
-new transaction_service[e_TransactionService];
 	
 // Numery i taryfy SMS
 enum e_SMS {
@@ -82,7 +76,6 @@ new which_service[33],
 
 // CVARy
 new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_host, cvar_user, cvar_pass, cvar_db, cvar_server_ip, cvar_silent_command;
-new cvar_debug;
 new sklep_komenda[MAX_COMMAND + 1], przeladuj_komenda[MAX_COMMAND + 1], uslugi_komenda[MAX_COMMAND + 1], show_info;
 
 // Sciezka do pliku konfiguracyjnego
@@ -102,8 +95,8 @@ enum requestStruct {
 	RequestPlayerId,
 };
 
-//Licencja
-new license_token[63];
+// License
+new g_licenseToken[63];
 new bool:g_footer = true;
 new g_serverIp[MAX_IP + 1];
 new g_serverPort[MAX_PORT + 1];
@@ -136,14 +129,15 @@ new g_lastReassign;
 new g_accountsSteamIds[4096] = "";
 
 // Settings
-new st_currency[16],
-	st_sms_service[MAX_TRANS_SERVICE_ID + 1], 
-	st_contact[MAX_CONTACT + 1], 
-	st_random_key[MAX_RANDOM_KEY + 1], 
-	st_random_key_md5[34], 
-	Float:st_vat;
-	
-new g_shopPageUrl[MAX_URL + 1];
+new g_currency[16],
+	g_smsPlatformId,
+	g_smsModuleId[MAX_PAYMENT_MODULE_ID + 1],
+	g_contact[MAX_CONTACT + 1], 
+	g_randomKey[MAX_RANDOM_KEY + 1], 
+	g_randomKeyMD5[34], 
+	g_shopPageUrl[MAX_URL + 1],
+	g_smsText[MAX_SMS_TEXT + 1],
+	Float:g_vat;
 
 new bool:g_shopRegistered = false;
 new bool:g_AmxbansExists = false;
@@ -220,7 +214,6 @@ public plugin_precache()
 	cvar_db 	= register_cvar("sklepsms_db", "");
 	cvar_server_ip	= register_cvar("sklepsms_server_ip", "");
 	cvar_silent_command	= register_cvar("sklepsms_ciche_komendy", "0");
-	cvar_debug = register_cvar("sklepsms_debug", "0");
 	
 	// Wczytywanie confingu
 	if (file_exists(config_path)) {
@@ -307,7 +300,7 @@ public plugin_cfg() {
 	split(fullIp, g_serverIp, charsmax(g_serverIp), g_serverPort, charsmax(g_serverPort), ":");
 
 	_loadPlayersServices(false);
-	_loadServerData();
+	_loadSettings();
 }
 
 public checkLoadedServices()
@@ -423,7 +416,7 @@ public sklepMenu(id)
 	menu_display(id, menu);
 	
 	client_print_color(id, Red, "^4[%s] ^1W razie problemow mozesz sie z nami skontaktowac", PREFIX);
-	client_print_color(id, Red, "^4[%s] ^1poprzez: ^3%s", PREFIX, st_contact);
+	client_print_color(id, Red, "^4[%s] ^1poprzez: ^3%s", PREFIX, g_contact);
 }
 
 public sklepMenu_callback(id, menu, item)
@@ -492,8 +485,8 @@ public wyborMenu(id, service_id)
 		new temp_cost = get_sms_cost(number);
 		formatex(szText, charsmax(szText), 
 			"\y%s \wza %d.%s %s + VAT\d ( %d.%s %s )", 
-			amount, temp_cost/100, two_number_value(temp_cost%100), st_currency, floatround(temp_cost*st_vat)/100, 
-			two_number_value(floatround(temp_cost*st_vat)%100), st_currency
+			amount, temp_cost/100, two_number_value(temp_cost%100), g_currency, floatround(temp_cost*g_vat)/100, 
+			two_number_value(floatround(temp_cost*g_vat)%100), g_currency
 		);
 		data[0] = service_id+1;
 		data[1] = min(127, i); // TODO: Problem przy ilosci uslug powyzej 256!
@@ -659,15 +652,13 @@ public checkServicePassword(FailState, Handle:Query, Error[], Errorcode, data[],
 		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "password"), szPassword, charsmax(szPassword));
 		_serviceChosen(id, type, szPassword);
 	}
-	else {
-		if (type == TYPE_NICK) {
-			client_print_color(id, Red, "^4[%s] ^1Istnieje juz usluga wykupiona na ten ^3nick^1, lecz posiada inne haslo. Wprowadz haslo ^3ponownie^1.", PREFIX);
-			client_cmd(id, "messagemode ssnick_Podaj_Haslo");
-		}
-		else if (type == TYPE_IP) {
-			client_print_color(id, Blue, "^4[%s] ^1Istnieje juz usluga wykupiona na ten ^3adres IP^1, lecz posiada inne haslo. Wprowadz haslo ^3ponownie^1.", PREFIX);
-			client_cmd(id, "messagemode ssip_Podaj_Haslo");
-		}
+	else if (type == TYPE_NICK) {
+		client_print_color(id, Red, "^4[%s] ^1Istnieje juz usluga wykupiona na ten ^3nick^1, lecz posiada inne haslo. Wprowadz haslo ^3ponownie^1.", PREFIX);
+		client_cmd(id, "messagemode ssnick_Podaj_Haslo");
+	}
+	else if (type == TYPE_IP) {
+		client_print_color(id, Blue, "^4[%s] ^1Istnieje juz usluga wykupiona na ten ^3adres IP^1, lecz posiada inne haslo. Wprowadz haslo ^3ponownie^1.", PREFIX);
+		client_cmd(id, "messagemode ssip_Podaj_Haslo");
 	}
 }
 
@@ -700,8 +691,6 @@ public displayPaymentMethodMenu(id)
 	menu_additem(menu, "SMS", "", 0, menu_callback);
 	menu_additem(menu, "Portfel", "", 0, menu_callback);
 
-	menu_setprop(menu, MPROP_EXIT, MEXIT_NEVER);
-
 	new data[4];
 	data[0] = id;
 	data[1] = menu;
@@ -725,10 +714,8 @@ public menuPaymentMethod_callback(id, menu, item)
 
 public menuPaymentMethod_handler(id, menu, item)
 {
-	if (0 <= item && item <= 1) {
-		remove_task(TASK_KEEP_DISPLAYING_MENU + id);
-		menu_destroy(menu);
-	}
+	remove_task(TASK_KEEP_DISPLAYING_MENU + id);
+	menu_destroy(menu);
 
 	switch (item) {
 		case 0: {
@@ -764,8 +751,8 @@ displayInfoSMS(id)
 	new temp_cost = get_sms_cost(number);
 	format(g_szTemp, charsmax(g_szTemp), 
 		"%s^n^n\rW celu dokonania zakupu, wyslij SMSa^n\wO tresci: \y%s^n\wNa numer: \y%s^n\wKoszt: \y%d.%s %s + VAT\d ( %d.%s %s )", 
-		g_szTemp, transaction_service[SMS_TEXT], number, temp_cost/100, two_number_value(temp_cost%100), st_currency, floatround(temp_cost*st_vat)/100, 
-		two_number_value(floatround(temp_cost*st_vat)%100), st_currency
+		g_szTemp, g_smsText, number, temp_cost/100, two_number_value(temp_cost%100), g_currency, floatround(temp_cost*g_vat)/100, 
+		two_number_value(floatround(temp_cost * g_vat)%100), g_currency
 	);
 	format(g_szTemp, charsmax(g_szTemp), "%s^n^n\wPo wyslaniu SMSa poczekaj na kod zwrotny.^nW celu wprowadzenia go, wcisnij: \y1^n^n\wAby wyjsc, wcisnij: \y0", g_szTemp);
 	
@@ -838,10 +825,10 @@ purchaseService(id, const method[], const sms_code[] = "") {
 	new curl_slist: headers;
 	{
 		new service[e_Service], auth_data[32 + 1], steam_id[32 + 1], price[e_Price], ip[MAX_IP + 1];
-		new u_service_id[MAX_SERVICE_ID * 2 + 1], u_auth_data[64 + 1], u_steam_id[64 + 1], u_password[MAX_PASSWORD * 2 + 1],
-			u_sms_service[MAX_TRANS_SERVICE_ID * 2 + 1], u_sms_code[MAX_CODE * 2 + 1];
+		new u_service_id[MAX_SERVICE_ID * 2 + 1], u_auth_data[64 + 1], u_steam_id[64 + 1],
+			u_password[MAX_PASSWORD * 2 + 1], u_sms_code[MAX_CODE * 2 + 1];
 		
-		new sign[34], sign_body[1 + charsmax(auth_data) + charsmax(sms_code) + charsmax(st_random_key) + 1];
+		new sign[34], sign_body[1 + charsmax(auth_data) + charsmax(sms_code) + charsmax(g_randomKey) + 1];
 		new header[MAX_HEADERS + 1];
 
 		// Pobieramy dane o usludze
@@ -872,14 +859,13 @@ purchaseService(id, const method[], const sms_code[] = "") {
 		StringURLEncode(service[sID], u_service_id, charsmax(u_service_id));
 		StringURLEncode(auth_data, u_auth_data, charsmax(u_auth_data));
 		StringURLEncode(b_passwords[id], u_password, charsmax(u_password));
-		StringURLEncode(st_sms_service, u_sms_service, charsmax(u_sms_service));
 		StringURLEncode(sms_code, u_sms_code, charsmax(u_sms_code));
 		StringURLEncode(steam_id, u_steam_id, charsmax(u_steam_id));
 
 		// Calculate body sign
 		formatex(sign_body, charsmax(sign_body),
 			"%d#%s#%s#%s",
-			b_types[id], auth_data, sms_code, st_random_key
+			b_types[id], auth_data, sms_code, g_randomKey
 		);
 		vc_md5(sign_body, sign);
 
@@ -887,11 +873,11 @@ purchaseService(id, const method[], const sms_code[] = "") {
 		headers = curl_slist_append(headers, header);
 		
 		formatex(body, charsmax(body),
-			"platform=engine_amxx&sign=%s&service=%s&type=%d&auth_data=%s&password=%s&method=%s&server=%d&transaction_service=%s&sms_code=%s&tariff=%d&ip=%s&language=polish",
-			sign, u_service_id, b_types[id], u_auth_data, u_password, method, g_serverId, u_sms_service, u_sms_code, price[pTARIFF], ip
+			"sign=%s&service=%s&type=%d&auth_data=%s&password=%s&method=%s&server=%d&payment_platform=%d&sms_code=%s&tariff=%d&ip=%s",
+			sign, u_service_id, b_types[id], u_auth_data, u_password, method, g_serverId, g_smsPlatformId, u_sms_code, price[pTARIFF], ip
 		);
 		
-		formatex(url, charsmax(url), "%s/api/server/purchase?key=%s", g_shopPageUrl, st_random_key_md5);
+		formatex(url, charsmax(url), "%s/api/server/purchase?key=%s&language=polish", g_shopPageUrl, g_randomKeyMD5);
 	}
 
 	if (!makeRequest("POST", url, headers, body, "getWebPagePurchaseService", id)) {
@@ -908,7 +894,7 @@ public getWebPagePurchaseService(const content[], CURLcode: code, statusCode, pl
 	}
 
 	if (statusCode >= 300) {
-		client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrociło bledny http code.", PREFIX);
+		client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrocilo bledny http code.", PREFIX);
 		return;
 	}
 	
@@ -924,6 +910,10 @@ public getWebPagePurchaseService(const content[], CURLcode: code, statusCode, pl
 	trim(szText);
 	trim(szWarnings);
 
+	if (!strlen(return_value)) {
+		log_amx("Invalid response: %s", content);
+	}
+
 	purchaseServicePost(playerId, return_value, szText, str_to_num(szPositive), str_to_num(szBsid), szWarnings);
 }
 
@@ -932,8 +922,8 @@ public purchaseServicePost(id, const return_value[], const szText[], positive, b
 	if (! is_user_connected(id)) {
 		return;
 	}
-
-	client_print_color(id, Red, "^4[%s] ^1%s", PREFIX, strlen(szText) ? szText : "Wystapil blad. Brak odpowiedzi z serwera.");
+	
+	client_print_color(id, Red, "^4[%s] ^1%s", PREFIX, strlen(szText) ? szText : "Wystapil blad. Brak odpowiedzi z serwera.");	
 	
 	if (strlen(szWarnings)) {
 		format(g_szTemp, charsmax(g_szTemp), 
@@ -965,7 +955,7 @@ public purchaseServicePost(id, const return_value[], const szText[], positive, b
 	
 	// Wystapil jakis blad
 	if (ret == SS_ERROR) {		
-		client_print_color(id, Red, "^4[%s] ^1Wystapil ^3blad ^1podczas kupowania uslugi. Zglos nam to: ^4%s", PREFIX, st_contact);
+		client_print_color(id, Red, "^4[%s] ^1Wystapil ^3blad ^1podczas kupowania uslugi. Zglos nam to: ^4%s", PREFIX, g_contact);
 		
 		new amount[32 + 1];
 		if (price[AMOUNT] == -1) { // Jezeli -1 to usluga jest na zawsze
@@ -1171,14 +1161,51 @@ _loadPlayersServices(bool:reloadAmxbans) {
 	ArrayClear(g_playersFlags);
 	g_playersLoaded = false;
 	
-	if (SqlTuple) {	
-		formatex(g_szTemp, charsmax(g_szTemp), 
-			"SELECT f.id, f.type, f.auth_data, f.password, f.a, f.b, f.c, f.d, f.e, f.f, f.g, f.h, f.i, f.j, f.k, f.l, f.m, f.n, f.o, f.p, f.q, f.r, f.s, f.t, f.u, f.y, f.v, f.w, f.x, f.z \
-			FROM `%splayers_flags` AS f \
+	if (SqlTuple) {
+		new iLen = 0, iMax = charsmax(g_szTemp);
+
+		iLen += formatex(g_szTemp[iLen], iMax - iLen,
+			"SELECT f.type, f.auth_data, f.password, \
+			(f.a > UNIX_TIMESTAMP() OR f.a = '-1') AS `a`, \
+			(f.b > UNIX_TIMESTAMP() OR f.b = '-1') AS `b`, \
+			(f.c > UNIX_TIMESTAMP() OR f.c = '-1') AS `c`, \
+			(f.d > UNIX_TIMESTAMP() OR f.d = '-1') AS `d`, \
+			(f.e > UNIX_TIMESTAMP() OR f.e = '-1') AS `e`, \
+			(f.f > UNIX_TIMESTAMP() OR f.f = '-1') AS `f`, \
+			(f.g > UNIX_TIMESTAMP() OR f.g = '-1') AS `g`, \
+			(f.h > UNIX_TIMESTAMP() OR f.h = '-1') AS `h`, "
+		);
+		
+		iLen += formatex(g_szTemp[iLen], iMax - iLen,
+			"(f.i > UNIX_TIMESTAMP() OR f.i = '-1') AS `i`, \
+			(f.j > UNIX_TIMESTAMP() OR f.j = '-1') AS `j`, \
+			(f.k > UNIX_TIMESTAMP() OR f.k = '-1') AS `k`, \
+			(f.l > UNIX_TIMESTAMP() OR f.l = '-1') AS `l`, \
+			(f.m > UNIX_TIMESTAMP() OR f.m = '-1') AS `m`, \
+			(f.n > UNIX_TIMESTAMP() OR f.n = '-1') AS `n`, \
+			(f.o > UNIX_TIMESTAMP() OR f.o = '-1') AS `o`, \
+			(f.p > UNIX_TIMESTAMP() OR f.p = '-1') AS `p`, "
+		);
+		
+		iLen += formatex(g_szTemp[iLen], iMax - iLen,
+			"(f.q > UNIX_TIMESTAMP() OR f.q = '-1') AS `q`, \
+			(f.r > UNIX_TIMESTAMP() OR f.r = '-1') AS `r`, \
+			(f.s > UNIX_TIMESTAMP() OR f.s = '-1') AS `s`, \
+			(f.t > UNIX_TIMESTAMP() OR f.t = '-1') AS `t`, \
+			(f.u > UNIX_TIMESTAMP() OR f.u = '-1') AS `u`, \
+			(f.y > UNIX_TIMESTAMP() OR f.y = '-1') AS `y`, \
+			(f.v > UNIX_TIMESTAMP() OR f.v = '-1') AS `v`, \
+			(f.w > UNIX_TIMESTAMP() OR f.w = '-1') AS `w`, \
+			(f.x > UNIX_TIMESTAMP() OR f.x = '-1') AS `x`, \
+			(f.z > UNIX_TIMESTAMP() OR f.z = '-1') AS `z` "
+		);
+		
+		iLen += formatex(g_szTemp[iLen], iMax - iLen,
+			"FROM `%splayers_flags` AS f \
 			JOIN `%sservers` AS s ON s.id = f.server \
 			WHERE s.ip = '%s' \
 			AND s.port = '%s' \
-			ORDER BY f.auth_data, f.type DESC", 
+			ORDER BY f.auth_data, f.type DESC",
 			TABLE_PREFIX, TABLE_PREFIX, g_serverIp, g_serverPort
 		);
 	
@@ -1203,8 +1230,7 @@ public getPlayersData(FailState, Handle:Query, Error[], Errorcode, data[], data_
 		for (new i = 0; i < strlen(all_flags); ++i) {
 			new temp[4];
 			formatex(temp, charsmax(temp), "%c", all_flags[i]);
-			new expire = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, temp));
-			if (expire > get_systime() || expire == -1) {
+			if (SQL_ReadResult(Query, SQL_FieldNameToNum(Query, temp))) {
 				player_flags[pfFLAGS] |= read_flags(temp);
 			}
 		}
@@ -1466,80 +1492,112 @@ public log_to_sql(const text[])
 	}
 }
 
-_loadServerData()
+_loadSettings()
 {
-	if (SqlTuple) {
-		formatex(g_szTemp, charsmax(g_szTemp),
-			"SELECT s.id, s.name, s.sms_service, CONCAT(' ', GROUP_CONCAT( ss.service_id SEPARATOR ' ' ), ' ') AS `services` \
-			FROM `%sservers` AS s \
-			LEFT JOIN `%sservers_services` AS ss ON ss.server_id = s.id \
-			WHERE s.ip = '%s' AND s.port = '%s' \
-			GROUP BY s.id",
-			TABLE_PREFIX, TABLE_PREFIX, g_serverIp, g_serverPort
-		);
-
-		SQL_ThreadQuery(SqlTuple, "loadServerDataHandler", g_szTemp);
-	}
+	formatex(g_szTemp, charsmax(g_szTemp),
+		"SELECT * FROM `%ssettings` \
+		WHERE `key` IN ('shop_url', 'random_key')",
+		TABLE_PREFIX
+	);
+	SQL_ThreadQuery(SqlTuple, "getSettingsHandler", g_szTemp);
 }
 
-
-public loadServerDataHandler(FailState, Handle:Query, Error[], Errorcode)
-{
+public getSettingsHandler(FailState, Handle:Query, Error[], Errorcode)
+{	
 	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		if (FailState == TQUERY_QUERY_FAILED) {
-			if (containi(Error, "exist") != -1) {
-				_error22();
-			}
-		}
-		
-		g_blocked = true;
 		return;
 	}
 
-	if (SQL_NumResults(Query) <= 0) {
-		_error21();
-	}
-	
-	// Pobranie id serwera
-	g_serverId = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "id"));
-	
-	// Pobranie uslugi obslugujacej platnosci
-	new sms_service[MAX_TRANS_SERVICE_ID + 1];
-	SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "sms_service"), sms_service, charsmax(sms_service));
-	if (strlen(sms_service)) {
-		copy(st_sms_service, charsmax(st_sms_service), sms_service);
-	}
+	while (SQL_MoreResults(Query)) {
+		new key[128], value[256];
 		
-	// Pozyskanie uslug na serwerze
-	new szServices[512];
-	SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "services"), szServices, charsmax(szServices));
-	
-	if (SqlTuple) {
-		// Get shop settings
-		formatex(g_szTemp, charsmax(g_szTemp),
-			"SELECT * FROM `%ssettings` \
-			WHERE `key` IN ('currency', 'shop_url', 'signature', 'sms_service', 'contact', 'vat', 'random_key', 'license_password')",
-			TABLE_PREFIX
-		);
-		SQL_ThreadQuery(SqlTuple, "getSettingsHandler", g_szTemp);
-	
-		// Update server info
-		formatex(g_szTemp, charsmax(g_szTemp),
-			"UPDATE `%sservers` \
-			SET `type` = 'amxx', `version` = '%s' \
-			WHERE `id` = '%d'",
-			TABLE_PREFIX, VERSION, g_serverId
-		);
-		SQL_ThreadQuery(SqlTuple, "IgnoreHandle", g_szTemp);
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "key"), key, charsmax(key));
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "value"), value, charsmax(value));
+
+		if (equali(key, "shop_url")) {
+			copy(g_shopPageUrl, charsmax(g_shopPageUrl), value);
+			
+			// Remove trailing slash
+			if (strlen(g_shopPageUrl) && g_shopPageUrl[strlen(g_shopPageUrl) - 1] == '/') {
+				g_shopPageUrl[strlen(g_shopPageUrl) - 1] = '^0';
+			}
+			
+			if (! strlen(g_shopPageUrl)) {
+				_errorNoShopUrl();
+				return;
+			}
+		}
+		else if (equali(key, "random_key")) {
+			copy(g_randomKey, charsmax(g_randomKey), value);
+			vc_md5(g_randomKey, g_randomKeyMD5); // Hashujemy random key
+		}
+		
+		SQL_NextRow(Query);
 	}
 	
+	_loadServerConfig();
+}
+
+_loadServerConfig()
+{
+	new url[MAX_URL + 1];
+	formatex(url, charsmax(url), "%s/api/server/config?key=%s&ip=%s&port=%s&version=%s", g_shopPageUrl, g_randomKeyMD5, g_serverIp, g_serverPort, VERSION);
+
+	if (!makeRequest("GET", url, 0, "", "onLoadServerConfigResponse")) {
+		_errorConfigFailed(999);
+	}
+}
+
+public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, playerId)
+{
+	if (code != CURLE_OK) {
+		_errorConfigFailed(code);
+		return;
+	}
+
+	if (statusCode == 404) {
+		_errorNoServer();
+	}
+
+	if (statusCode == 402) {
+		_errorOutdatedVersion();
+	}
+
+	if (statusCode >= 300) {
+		_errorConfigInvalidResponse(statusCode);
+		return;
+	}
+
+	new szServices[512];
+
+	extractFieldValue(content, "id", g_szTemp, charsmax(g_szTemp));
+	g_serverId = str_to_num(g_szTemp);
+	extractFieldValue(content, "sms_platform_id", g_szTemp, charsmax(g_szTemp));
+	g_smsPlatformId = str_to_num(g_szTemp);
+	extractFieldValue(content, "sms_module_id", g_smsModuleId, charsmax(g_smsModuleId));
+	extractFieldValue(content, "sms_text", g_smsText, charsmax(g_smsText));
+	extractFieldValue(content, "services", szServices, charsmax(szServices));
+	extractFieldValue(content, "steam_ids", g_accountsSteamIds, charsmax(g_accountsSteamIds));
+	extractFieldValue(content, "currency", g_currency, charsmax(g_currency));
+	extractFieldValue(content, "contact", g_contact, charsmax(g_contact));
+	extractFieldValue(content, "vat", g_szTemp, charsmax(g_szTemp));
+	g_vat = str_to_float(g_szTemp);
+	extractFieldValue(content, "license_token", g_licenseToken, charsmax(g_licenseToken));
+
+	_validateLicense();
+	_getServicesData(szServices);
+	_getSmsNumbers();
+}
+
+_getServicesData(const services[])
+{
 	// Sprawdzanie dostepnosci usług
 	new service_id[MAX_SERVICE_ID + 1], service_id_space[MAX_SERVICE_ID + 2 + 1], ids[512], ids_len = 0, ids_max = charsmax(ids);
 	for (new i = 0; i < ArraySize(service_ids); ++i) {
 		ArrayGetString(service_ids, i, service_id, charsmax(service_id));
 		formatex(service_id_space, charsmax(service_id_space), " %s ", service_id);
 		
-		if (containi(szServices, service_id_space) != -1) {
+		if (containi(services, service_id_space) != -1) {
 			if (ids_len) {
 				ids_len += formatex(ids[ids_len], ids_max-ids_len, ",");
 			}
@@ -1638,7 +1696,7 @@ public getPriceListHandler(FailState, Handle:Query, Error[], Errorcode)
 		new price[e_Price];
 		
 		price[pTARIFF] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tariff"));
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "service"), price[pSERVICE], MAX_TRANS_SERVICE_ID);
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "service"), price[pSERVICE], MAX_SERVICE_ID);
 		price[AMOUNT] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "amount"));
 		
 		ArrayPushArray(pricelist, price);
@@ -1647,97 +1705,38 @@ public getPriceListHandler(FailState, Handle:Query, Error[], Errorcode)
 	}
 }
 
-public getSettingsHandler(FailState, Handle:Query, Error[], Errorcode)
+_getSmsNumbers()
+{
+	if (SqlTuple) {
+		new payment_module_id[MAX_PAYMENT_MODULE_ID + 1];
+		formatex(payment_module_id, charsmax(payment_module_id), "%s", g_smsModuleId);
+		escapeQuotes(payment_module_id, charsmax(payment_module_id));
+		
+		formatex(g_szTemp, charsmax(g_szTemp),
+			"SELECT `number`, `tariff` \
+			FROM `%ssms_numbers` \
+			WHERE `service` = '%s'",
+			TABLE_PREFIX, payment_module_id
+		);
+		SQL_ThreadQuery(SqlTuple, "getSmsNumbersHandler", g_szTemp);
+	}
+}
+
+public getSmsNumbersHandler(FailState, Handle:Query, Error[], Errorcode)
 {	
 	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
 		return;
 	}
 
-	while (SQL_MoreResults(Query)) {
-		new key[128], value[256];
-		
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "key"), key, charsmax(key));
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "value"), value, charsmax(value));
-		
-		if (equali(key, "currency")) {
-			copy(st_currency, charsmax(st_currency), value);
-		}
-		else if (equali(key, "shop_url")) {
-			copy(g_shopPageUrl, charsmax(g_shopPageUrl), value);
-			
-			// Remove trailing slash
-			if (strlen(g_shopPageUrl) && g_shopPageUrl[strlen(g_shopPageUrl) - 1] == '/') {
-				g_shopPageUrl[strlen(g_shopPageUrl) - 1] = '^0';
-			}
-			
-			if (! strlen(g_shopPageUrl)) {
-				_error33();
-			}
-		}
-		else if (equali(key, "sms_service") && !strlen(st_sms_service)) {
-			copy(st_sms_service, charsmax(st_sms_service), value);
-		}
-		else if (equali(key, "contact")) {
-			copy(st_contact, charsmax(st_contact), value);
-		}
-		else if (equali(key, "vat")) {
-			st_vat = str_to_float(value);
-		}
-		else if (equali(key, "random_key")) {
-			copy(st_random_key, charsmax(st_random_key), value);
-			vc_md5(st_random_key, st_random_key_md5); // Hashujemy random key
-		}
-		else if (equali(key, "license_password")) {
-			copy(license_token, charsmax(license_token), value);
-		}
+	new sms[e_SMS];
+	while (SQL_MoreResults(Query))
+	{
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "number"), sms[NUMBER], MAX_NUMBER);
+		sms[sTARIFF] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tariff"));
+		ArrayPushArray(smses, sms);
 		
 		SQL_NextRow(Query);
 	}
-	
-	_validateLicense();
-	_loadUsers();
-	
-	if (SqlTuple) {
-		// Pobranie numerow sms
-		escapeQuotes(st_sms_service, charsmax(st_sms_service));
-		formatex(g_szTemp, charsmax(g_szTemp),
-			"SELECT `number`, `tariff` \
-			FROM `%ssms_numbers` \
-			WHERE `service` = '%s'",
-			TABLE_PREFIX, st_sms_service
-		);
-		SQL_ThreadQuery(SqlTuple, "getSMSesData", g_szTemp);
-	
-		// Pobranie danych o serwisie transakcyjnym
-		formatex(g_szTemp, charsmax(g_szTemp),
-			"SELECT * FROM `%stransaction_services` \
-			WHERE `id` = '%s'",
-			TABLE_PREFIX, st_sms_service
-		);
-		SQL_ThreadQuery(SqlTuple, "getTransactionServiceData", g_szTemp);
-	}
-}
-
-_loadUsers()
-{
-	new url[MAX_URL + 1];
-	formatex(url, charsmax(url), "%s/api/server/users/steam-ids?key=%s", g_shopPageUrl, st_random_key_md5);
-	makeRequest("GET", url, 0, "", "onLoadUsersResponse");
-}
-
-public onLoadUsersResponse(const content[], CURLcode: code, statusCode, playerId)
-{
-	if (code != CURLE_OK) {
-		log_to_file(LOG_FILE, "Nie udalo sie pozyskac listy uzytkownikow. Error: %d", code);
-		return;
-	}
-
-	if (statusCode >= 300) {
-		log_to_file(LOG_FILE, "Zapytanie o liste uzytkownikow wrociło bledny http code. Kod: %d", statusCode);
-		return;
-	}
-
-	formatex(g_accountsSteamIds, charsmax(g_accountsSteamIds), "%s", content);
 }
 
 _canPayWithWallet(id)
@@ -1761,13 +1760,13 @@ _validateLicense()
 	new body[MAX_BODY + 1];
 	
 	{
-		new serverNameEscaped[MAX_SERVER_NAME * 2 + 1], signature;
+		new serverNameEscaped[MAX_SERVER_NAME * 2 + 1];
 		get_cvar_string("hostname", g_serverName, charsmax(g_serverName));
 		StringURLEncode(g_serverName, serverNameEscaped, charsmax(serverNameEscaped));
 
 		formatex(header, charsmax(header),
 			"Authorization: %s",
-			license_token
+			g_licenseToken
 		);
 		headers = curl_slist_append(headers, header);
 
@@ -1777,11 +1776,15 @@ _validateLicense()
 		);
 	}
 	
-	makeRequest("POST", "https://license.sklep-sms.pl/v1/authorization/server", headers, body, "onValidateLicenseResponse");
+	if (!makeRequest("POST", "https://license.sklep-sms.pl/v1/authorization/server", headers, body, "onValidateLicenseResponse")) {
+		_errorForbidden("Brak miejsca w puli requestow");
+	}
 }
 
 public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, playerId)
 {
+	g_shopRegistered = false;
+
 	if (g_validationAttempt) {
 		_errorForbidden();
 		return;
@@ -1790,12 +1793,9 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	g_validationAttempt = true;
 
 	if (code != CURLE_OK) {
-		g_shopRegistered = false;
 		log_to_file(LOG_FILE, "Licencja nie zostala zwalidowana z nieznanych powodow. Error: %d", code);
 		return;
 	}
-	
-	g_shopRegistered = false;
 
 	if (statusCode == 401) {
 		_errorInvalidToken();
@@ -1821,7 +1821,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	}
 
 	if (statusCode >= 300) {
-		_errorInvalidResponse(statusCode);
+		_errorLicenseInvalidResponse(statusCode);
 		return;
 	}
 
@@ -1830,7 +1830,6 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	trim(text);
 
 	if (!equal(text, "ok")) {
-		g_shopRegistered = false;
 		log_to_file(LOG_FILE, "%s", content);
 		_errorUnknown();
 		return;
@@ -1851,47 +1850,6 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	
 	g_shopRegistered = true;
 	log_amx("Walidacja licencji zostala zakonczona pomyslnie");
-}
-
-public getTransactionServiceData(FailState, Handle:Query, Error[], Errorcode)
-{	
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	if (SQL_NumResults(Query) <= 0) {
-		_error31();
-	}
-	
-	if (!SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "sms"))) {
-		_error32();
-	}
-	
-	new data[256];
-	SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "id"), transaction_service[tsID], MAX_TRANS_SERVICE_ID);
-	SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "name"), transaction_service[tsNAME], MAX_TRANS_SERVICE_NAME);
-	SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "data"), data, charsmax(data));
-	
-	if (! json_decode(data, "sms_text", transaction_service[SMS_TEXT], MAX_SMS_TEXT)) {
-		log_to_file(LOG_FILE, "Nie udalo sie pozyskac kodu sms.^nDane: %s", data);
-	}
-}
-
-public getSMSesData(FailState, Handle:Query, Error[], Errorcode)
-{	
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	new sms[e_SMS];
-	while (SQL_MoreResults(Query))
-	{
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "number"), sms[NUMBER], MAX_NUMBER);
-		sms[sTARIFF] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tariff"));
-		ArrayPushArray(smses, sms);
-		
-		SQL_NextRow(Query);
-	}
 }
 
 _checkForSQLErrors(Handle:Query, FailState, Error[], Errorcode)
@@ -2000,21 +1958,15 @@ public bool:native_is_steam(plugin, params)
 	
 	return is_steam(get_param(1));
 }
-
-// ######### TYPY BŁĘDÓW ##########
-// ## 1 - licencja
-// ## 2 - problem z baza
-// ## 3 - metody płatnosci
-// ## 4 - sklep ogolnie
-// ## 5 - probem z serwerem
 // ################################
 
+// License
 _errorUnknown() {
 	log_to_file(LOG_FILE, "Error 10 - Wystapil blad podczas odczytywania odpowiedzi od serwera walidujacego licencje. Zobacz logi.");
 	g_blocked = true;
 }
 
-_errorInvalidResponse(statusCode) {
+_errorLicenseInvalidResponse(statusCode) {
 	log_to_file(LOG_FILE, "Error 11 - Serwer walidacyjny zwrocil bledny HTTP CODE %d.", statusCode);
 	g_blocked = true;
 }
@@ -2039,29 +1991,30 @@ _errorForbidden(const text[] = "") {
 	_make_error(message);
 }
 
-_error21() {
+// Config
+_errorConfigFailed(code) {
+	log_to_file(LOG_FILE, "Error 20 - Nie udalo sie pobrac konfiguracji serwera. Error: %d", code);
+	g_blocked = true;
+}
+
+_errorNoServer() {
 	_make_error("Error 21 - Serwer nie znajduje sie nie liscie serwerow na stronie WWW.");
 }
 
-_error22() {	
-	_make_error("Error 22 - Brak tabeli ss_servers w bazie.");
+_errorOutdatedVersion() {
+	_make_error("Error 22 - Obecna wersja pluginu nie jest juz wspierana. Dokonaj aktualizacji pluginu.");
 }
 
-_error31() {
-	log_to_file(LOG_FILE, "Error 31 - Wybrana metoda platnosci nie istnieje w bazie danych.");
+_errorConfigInvalidResponse(statusCode) {
+	log_to_file(LOG_FILE, "Error 23 - Podczas ladowania konfiguracji, strona WWW zwrocila bledny HTTP code %d.", statusCode);
 	g_blocked = true;
 }
 
-_error32() {
-	log_to_file(LOG_FILE, "Error 32 - Wybrana metoda platnosci nie obsluguje platnosci SMS.");
-	g_blocked = true;
+_errorNoShopUrl() {
+	_make_error("Error 24 - Nie podano adresu sklepu w ustawieniach.");
 }
 
-_error33() {
-	log_to_file(LOG_FILE, "Error 33 - Nie podano adresu sklepu w ustawieniach.");
-	g_blocked = true;
-}
-
+// General
 _error51() {
 	_make_error("Error 51 - Nie udalo sie utworzyc uchwytu do bazy danych.");
 }
@@ -2210,7 +2163,7 @@ _getNumberByTariff(tariff, output[], len)
 
 bool:isDebug()
 {
-	return bool:get_pcvar_num(cvar_debug);
+	return false;
 }
 
 // ------------------------------------------------- Versions Compatibility ----------------------------------------------------
@@ -2287,6 +2240,26 @@ stock groupDigits(a, output[], len)
 	}
 }
 
+stock extractFieldValue(const text[], const field[], output[], len)
+{
+	new pattern[64];
+	formatex(pattern, charsmax(pattern), "^^%s:(.*)$", field);
+	matchRegex(text, pattern, output, len, 1);
+}
+
+stock matchRegex(const text[], const pattern[], output[], len, group = 0)
+{
+	new ret, error[32];
+	new Regex:reg = regex_match(text, pattern, ret, error, charsmax(error), "m");
+	
+	if (reg > REGEX_NO_MATCH) {
+		regex_substr(reg, group, output, len);
+		regex_free(reg);
+	} else {
+		log_to_file(LOG_FILE, "Regex error. Pattern: %s, Error: %s, Reg: %d", pattern, error, reg);
+	}
+}
+
 stock getXMLValue(const szText[], const tag[], output[], len)
 {	
 	new temp[64], textStart, textEnd;
@@ -2345,98 +2318,4 @@ stock StringURLEncode(const szInput[], szOutput[], const iLen)
 	szOutput[ iFLen ] = 0;
 	
 	return iFLen;
-}
-
-stock bool:json_decode(const string[], const key[], output[], output_len)
-{
-	new pos = 0;
-	new len = strlen(string);
-	new key_start, key_len;
-	new temp_key[ 512 ];
-	new value_start, value_len;
-	new escaped = false;
-	
-	while (pos < len) {
-
-		while (string[pos] != '"') {
-			pos++;
-		}
-	
-		// Pozyskujemy nazwe klucza
-		key_start = pos + 1;
-		escaped = false;
-		while (++pos < len) {
-			if (pos == len) {
-				return false;
-			}
-	
-			if (escaped) {
-				escaped = false;
-			} else if (string[ pos ] == '\') {
-				escaped = true;
-			} else if (string [ pos ] == '"') {
-				break;
-			}
-		}
-		
-		if (pos == len) {
-			return false;
-		}
-		
-		if (!(key_len = pos - key_start)) {
-			continue;
-		}
-		
-		copy(temp_key, min(charsmax(temp_key), key_len), string[key_start]);
-	
-		pos++; // Przechodzimy o jeden dalej, bo zatrzymalismy sie na znaku '"'
-		while (pos < len && isspace(string[pos])) ++pos;
-		if (pos == len) {
-			return false;
-		}
-	
-		if (string[ pos ] != ':') {
-			continue;
-		}
-			
-		pos++; // Przechodzimy o jeden dalej, bo zatrzymalismy sie na znaku ':'
-			
-		while (pos < len && isspace(string[pos])) ++pos;
-		if (pos == len) {
-			return false;
-		}
-		
-		value_start = pos;
-		
-		pos--; // Wracamy o jeden, bo pozniej mamy pre inkrementacje
-		while (++pos < len) {
-			if (escaped) {
-				escaped = false;
-			} else if (string[ pos ] == '\') {
-				escaped = true;
-			} else if (string [ pos ] == ',' || string [ pos ] == '}') {
-				break;
-			}
-		}
-		if (pos == len) {
-			return false;
-		}
-		
-		if (!(value_len = pos - value_start)) {
-			continue;
-		}
-			
-		// Jezeli klucz jest inny niz ten w argumencie funkcji, to nie kopiuj jego value
-		if (!equal(temp_key, key)) {
-			continue;
-		}
-		
-		copy(output, min(output_len, value_len), string[value_start]);
-		trim(output);
-		remove_quotes(output);
-		
-		return true;
-	}
-	
-	return false;
 }
