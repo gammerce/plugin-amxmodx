@@ -1771,8 +1771,8 @@ _validateLicense()
 		headers = curl_slist_append(headers, header);
 
 		formatex(body, charsmax(body),
-			"platform=amxmodx&url=%s:%s&name=%s&version=%s&signature=%d",
-			g_serverIp, g_serverPort, serverNameEscaped, VERSION, g_signature
+			"platform=amxmodx&url=%s:%s&name=%s&version=%s&signature=%d&platform_version=%s",
+			g_serverIp, g_serverPort, serverNameEscaped, VERSION, g_signature, AMXX_VERSION_STR
 		);
 	}
 	
