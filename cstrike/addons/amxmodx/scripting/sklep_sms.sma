@@ -82,7 +82,7 @@ new sklep_komenda[MAX_COMMAND + 1], przeladuj_komenda[MAX_COMMAND + 1], uslugi_k
 new config_path[128];
 
 // Requests
-const MAX_RESPONSE = 256;
+const MAX_RESPONSE = 1024;
 const MAX_RESPONSE_COUNT = 5;
 new g_requestCounter = 0;
 new g_responses[MAX_RESPONSE_COUNT][MAX_RESPONSE + 1];
