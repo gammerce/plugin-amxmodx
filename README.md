@@ -1,9 +1,10 @@
-# [Sklep SMS](https://sklep-sms.pl/)
+# [Sklep SMS](https://sklep-sms.pl/) [![Release](https://img.shields.io/github/v/release/gammerce/plugin-amxmodx)](https://github.com/gammerce/plugin-amxmodx/releases/latest)
 
 Plugin AMX Mod X do Sklepu SMS, który umożliwia dokonywanie zakupow z serwera.
 
 ## Wymagania
-* AMX Mod X w wersji co najmniej 1.8.0
+* AMX Mod X 1.8.2+
+* Moduł CURL
 
 ## Lista obsługiwanych gier
 * Counter-Strike v1.6
