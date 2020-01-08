@@ -365,6 +365,7 @@ public sklepMenu(id)
 		client_print_color(id, Red, "^4[%s] ^1Brak dostepnych uslug do kupienia.", PREFIX);
 		return;
 	}
+	
 	if (!g_shopRegistered) {
 		client_print_color(id, Red, "^4[%s] ^1Nie udalo sie przeprowadzic walidacji licencji lub wystapil blad w zapytaniu do bazy danych.", PREFIX);
 		return;
@@ -819,6 +820,11 @@ public kodZwrotny(id)
 
 purchaseService(id, const method[], const sms_code[] = "") {
 	client_print_color(id, Red, "^4[%s] ^1Trwa przeprowadzanie zakupu...", PREFIX);
+
+	if (!_canUseShop()) {
+		client_print_color(id, Red, "^4[%s] ^1Sklep jest tymczaosowo nieaktywny.", PREFIX);
+		return;
+	}
 	
 	new url[MAX_URL + 1];
 	new body[MAX_BODY + 1];
@@ -1874,6 +1880,11 @@ _checkForSQLErrors(Handle:Query, FailState, Error[], Errorcode)
 	}
 	
 	return PLUGIN_CONTINUE;
+}
+
+_canUseShop()
+{
+	return !g_blocked && g_shopRegistered && get_pcvar_num(cvar_on) && g_sqlConnected;
 }
 
 public IgnoreHandle(FailState, Handle:Query, Error[], Errorcode)
