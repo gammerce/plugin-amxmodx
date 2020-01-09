@@ -145,11 +145,11 @@ new bool:g_AmxbansExists = false;
 public plugin_natives()
 {
 	register_library("shop_sms");
-	register_native("ss_register_service", "registerService");
+	register_native("ss_register_service", "native_registerService");
 	register_native("ss_show_service_purchase", "native_showServicePurchase");
-	register_native("ss_show_sms_info", "native_infoSMS");
-	register_native("ss_add_code", "native_addCode");
-	register_native("ss_log", "dodajLog");
+	register_native("ss_show_sms_info", "native_displaySmsDetails");
+	register_native("ss_add_code", "native_addSmsCode");
+	register_native("ss_log", "native_addLog");
 	register_native("ss_is_steam", "native_is_steam");
 }
 
@@ -233,10 +233,10 @@ public plugin_init()
 {	
 	register_plugin("Sklep SMS", VERSION, "SeeK");
 	
-	register_menucmd(register_menuid("SMS_Info"), KEYS, "infoSMS_handler");
-	register_concmd("Podaj_Kod_Zwrotny", "kodZwrotny");
-	register_concmd("ssnick_Podaj_Haslo", "menuServiceType_nick");
-	register_concmd("ssip_Podaj_Haslo", "menuServiceType_ip");
+	register_menucmd(register_menuid("smsDetails"), KEYS, "smsDetails_handler");
+	register_concmd("Podaj_Kod_Zwrotny", "onSmsCodeEntered");
+	register_concmd("ssnick_Podaj_Haslo", "onNickPasswordEntered");
+	register_concmd("ssip_Podaj_Haslo", "onIpPasswordEntered");
 	register_concmd("sklepsms_reloaddata", "realoadPlayersServices");
 	register_concmd("sklepsms_reloadusers", "pre_reassignPlayersFlags");
 	
@@ -244,36 +244,16 @@ public plugin_init()
 	register_clcmd("say_team", "sayHook");
 	
 	if (show_info) {
-		set_task(137.0, "reklama", _, _, _, "b");
+		set_task(137.0, "displayCommercial", _, _, _, "b");
 	}
 
 	g_signature = random_num(1, 99999999);
 }
 
-public loadCvars()
-{
-	get_pcvar_string(cvar_sklep, sklep_komenda, charsmax(sklep_komenda));
-	get_pcvar_string(cvar_przeladuj, przeladuj_komenda, charsmax(przeladuj_komenda));
-	get_pcvar_string(cvar_uslugi, uslugi_komenda, charsmax(uslugi_komenda));
-	show_info = get_pcvar_num(cvar_show_info);
-	
-	get_pcvar_string(cvar_host, sql_host, charsmax(sql_host));
-	get_pcvar_string(cvar_user, sql_user, charsmax(sql_user));
-	get_pcvar_string(cvar_pass, sql_pass, charsmax(sql_pass));
-	get_pcvar_string(cvar_db, sql_db, charsmax(sql_db));
-}
-
-public plugin_end()
-{	
-	if (SqlTuple) {
-		SqlTuple = Empty_Handle;
-	}
-}
-
 public plugin_cfg() {
 	// Blad przy tworzeniu (brak uprawnien)
 	if (!file_exists(config_path)) {
-		brakSciezki(0, config_path);
+		_invalidPath(0, config_path);
 	}
 		
 	// Ponowne wczytywanie confingu
@@ -282,7 +262,7 @@ public plugin_cfg() {
 		server_exec();
 	}
 	
-	loadCvars();
+	_loadCvars();
 	
 	// Łaczenie z baza
 	SqlTuple = SQL_MakeDbTuple(sql_host, sql_user, sql_pass, sql_db);
@@ -303,13 +283,24 @@ public plugin_cfg() {
 	_loadSettings();
 }
 
-public checkLoadedServices()
+public plugin_end()
 {	
-	if (!ArraySize(services)) {
-		log_amx("Nie zaladowano zadnych uslug do zakupienia.");
-	} else {
-		log_amx("Zaladowano %d uslug do zakupienia.", ArraySize(services));
+	if (SqlTuple) {
+		SqlTuple = Empty_Handle;
 	}
+}
+
+_loadCvars()
+{
+	get_pcvar_string(cvar_sklep, sklep_komenda, charsmax(sklep_komenda));
+	get_pcvar_string(cvar_przeladuj, przeladuj_komenda, charsmax(przeladuj_komenda));
+	get_pcvar_string(cvar_uslugi, uslugi_komenda, charsmax(uslugi_komenda));
+	show_info = get_pcvar_num(cvar_show_info);
+	
+	get_pcvar_string(cvar_host, sql_host, charsmax(sql_host));
+	get_pcvar_string(cvar_user, sql_user, charsmax(sql_user));
+	get_pcvar_string(cvar_pass, sql_pass, charsmax(sql_pass));
+	get_pcvar_string(cvar_db, sql_db, charsmax(sql_db));
 }
 
 public client_authorized(id)
@@ -328,7 +319,7 @@ public sayHook(id)
 	read_argv(1, tekst, charsmax(tekst));
 	
 	if (equali(tekst, sklep_komenda)) {
-		sklepMenu(id);
+		_openShopMenu(id);
 	}
 	else if (equali(tekst, przeladuj_komenda)) {
 		pre_reassignPlayersFlags(id);
@@ -340,8 +331,9 @@ public sayHook(id)
 	return get_pcvar_num(cvar_silent_command) ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
 }
 
-/* Menu sklepu */
-public sklepMenu(id)
+// ------------------------------------------------- Shop Menu ----------------------------------------------------
+
+_openShopMenu(id)
 {
 	if (!is_user_connected(id)) {
 		return;
@@ -373,12 +365,12 @@ public sklepMenu(id)
 	
 	new menu;
 	if (g_footer) {
-		menu = menu_create("\rSklep SMS\d napedzany przez\w sklep-sms.pl^n\yWybierz usluge:", "sklepMenu_handler");
+		menu = menu_create("\rSklep SMS\d napedzany przez\w sklep-sms.pl^n\yWybierz usluge:", "shopMenu_handler");
 	} else {
-		menu = menu_create("\rSklep SMS^n\yWybierz usluge:", "sklepMenu_handler");
+		menu = menu_create("\rSklep SMS^n\yWybierz usluge:", "shopMenu_handler");
 	}
 		
-	new menu_callback = menu_makecallback("sklepMenu_callback");
+	new menu_callback = menu_makecallback("shopMenu_callback");
 	
 	new szText[64], service[e_Service];
 	for (new i = 0; i < ArraySize(services); ++i) {
@@ -420,7 +412,7 @@ public sklepMenu(id)
 	client_print_color(id, Red, "^4[%s] ^1poprzez: ^3%s", PREFIX, g_contact);
 }
 
-public sklepMenu_callback(id, menu, item)
+public shopMenu_callback(id, menu, item)
 {	
 	new data[4], zaccess, callback;
 	menu_item_getinfo(menu, item, zaccess, data, sizeof data, _, _, callback);
@@ -428,7 +420,7 @@ public sklepMenu_callback(id, menu, item)
 	return data[1] == ITEM_DISABLED ? ITEM_DISABLED : ITEM_ENABLED;
 }
 
-public sklepMenu_handler(id, menu, item)
+public shopMenu_handler(id, menu, item)
 {
 	if (!is_user_connected(id) || item == MENU_EXIT) {
 		menu_destroy(menu);
@@ -438,13 +430,11 @@ public sklepMenu_handler(id, menu, item)
 	new data[4], zaccess, callback;
 	menu_item_getinfo(menu, item, zaccess, data, sizeof data, _, _, callback);
 	
-	wyborMenu(id, data[0]-1);
+	_openPricingMenu(id, data[0]-1);
 	menu_destroy(menu);
 }
-/* Konie menu sklepu */
 
-/* Menu wyboru */
-public wyborMenu(id, service_id)
+_openPricingMenu(id, service_id)
 {	
 	if (!is_user_connected(id)) {
 		return;
@@ -457,7 +447,7 @@ public wyborMenu(id, service_id)
 	
 	formatex(szText, charsmax(szText), "\rSklep SMS^n\yWybierz ilosc %s:", service[sNAME]);
 	
-	new menu = menu_create(szText, "wyborMenu_handler");
+	new menu = menu_create(szText, "pricingMenu_handler");
 	
 	new price[e_Price], number[MAX_NUMBER+1];
 	for (new i = 0; i < ArraySize(pricelist); ++i) {
@@ -500,16 +490,20 @@ public wyborMenu(id, service_id)
 	
 	if (menu_items(menu) > 1) {
 		menu_display(id, menu);
-	} else if (menu_items(menu) == 1) { // Jezeli jest tylko jeden item, przejdz od razu do informacji o smsie
+	}
+	// Jezeli jest tylko jeden item, przejdz od razu do informacji o smsie
+	else if (menu_items(menu) == 1) {
 		which_service[id] = service_id;
 		which_price[id] = data[1]+data[2];
-		displayServiceTypeMenu(id);
-	} else { // Zero
+		_openServiceTypeMenu(id);
+	}
+	// Zero
+	else {
 		client_print_color(id, Red, "^4[%s] ^1Brak cennika dla tej uslugi.", PREFIX);
 	}
 }
 
-public wyborMenu_handler(id, menu, item)
+public pricingMenu_handler(id, menu, item)
 {	
 	if (!is_user_connected(id) || item == MENU_EXIT) {
 		menu_destroy(menu);
@@ -522,37 +516,19 @@ public wyborMenu_handler(id, menu, item)
 	which_service[id] = data[0] - 1;
 	which_price[id] = data[1] + data[2];
 	
-	displayServiceTypeMenu(id);
+	_openServiceTypeMenu(id);
 	menu_destroy(menu);
 }
-/* Koniec menu wyboru */
 
-public keepDisplayingMenu(data[])
-{	
-	new id = data[0];
-	if (!is_user_connected(id)) {
-		menu_destroy(data[1]);
-		return;
-	}
-	
-	new menu, newmenu;
-	player_menu_info(id, menu, newmenu);
-	if (newmenu != data[1]) {
-		menu_display(id, data[1]);
-	}
-			
-	set_task(0.1, "keepDisplayingMenu", TASK_KEEP_DISPLAYING_MENU + id, data, 2);
-}
-
-public displayServiceTypeMenu(id)
+_openServiceTypeMenu(id)
 {
 	new service[e_Service];
 	ArrayGetArray(services, which_service[id], service);
 	
 	if (service[TYPES] & (TYPE_NICK|TYPE_IP|TYPE_SID)) {	
 		// Wyswietlamy menu z wyborem na co chcemy kupic usluge
-		new menu = menu_create("Wybierz typ uslugi", "menuServiceType_handler");
-		new menu_callback = menu_makecallback("menuServiceType_callback");
+		new menu = menu_create("Wybierz typ uslugi", "serviceTypeMenu_handler");
+		new menu_callback = menu_makecallback("serviceTypeMenu_callback");
 	
 		menu_additem(menu, "Na Nick + haslo", "", 0, menu_callback);
 		menu_additem(menu, "Na IP + haslo", "", 0, menu_callback);
@@ -570,7 +546,7 @@ public displayServiceTypeMenu(id)
 	}
 }
 
-public menuServiceType_callback(id, menu, item)
+public serviceTypeMenu_callback(id, menu, item)
 {	
 	new service[e_Service];
 	ArrayGetArray(services, which_service[id], service);
@@ -584,7 +560,7 @@ public menuServiceType_callback(id, menu, item)
 	return ITEM_DISABLED;
 }
 
-public menuServiceType_handler(id, menu, item)
+public serviceTypeMenu_handler(id, menu, item)
 {
 	if (0 <= item && item <= 2) {
 		remove_task(TASK_KEEP_DISPLAYING_MENU+id);
@@ -604,27 +580,27 @@ public menuServiceType_handler(id, menu, item)
 	}
 }
 
-public menuServiceType_nick(id)
+public onNickPasswordEntered(id)
 {	
 	new szPassword[MAX_PASSWORD + 1];
 	read_argv(1, szPassword, charsmax(szPassword));
 	
-	if (!_menuServiceType_checkPass(id, TYPE_NICK, szPassword)) {
+	if (!_serviceTypeMenu_checkPass(id, TYPE_NICK, szPassword)) {
 		client_cmd(id, "messagemode ssnick_Podaj_Haslo");
 	}
 }
 
-public menuServiceType_ip(id)
+public onIpPasswordEntered(id)
 {
 	new szPassword[MAX_PASSWORD + 1];
 	read_argv(1, szPassword, charsmax(szPassword));
 	
-	if (! _menuServiceType_checkPass(id, TYPE_IP, szPassword)) {
+	if (! _serviceTypeMenu_checkPass(id, TYPE_IP, szPassword)) {
 		client_cmd(id, "messagemode ssip_Podaj_Haslo");
 	}
 }
 
-bool:_menuServiceType_checkPass(id, type, const szPassword[MAX_PASSWORD + 1])
+bool:_serviceTypeMenu_checkPass(id, type, const szPassword[MAX_PASSWORD + 1])
 {
 	if (strlen(szPassword) > 30) {
 		client_print(id, print_center, "Podane haslo jest za dlugie. Maksymalna ilosc znakow wynosi 30.");
@@ -637,30 +613,6 @@ bool:_menuServiceType_checkPass(id, type, const szPassword[MAX_PASSWORD + 1])
 	
 	_serviceChosen(id, type, szPassword);
 	return true;
-}
-
-public checkServicePassword(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
-{
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	new id = data[0];
-	new type = data[1];
-	// Haslo takie jak do innych uslug
-	if (SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "equal"))) {
-		new szPassword[MAX_PASSWORD + 1];
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "password"), szPassword, charsmax(szPassword));
-		_serviceChosen(id, type, szPassword);
-	}
-	else if (type == TYPE_NICK) {
-		client_print_color(id, Red, "^4[%s] ^1Istnieje juz usluga wykupiona na ten ^3nick^1, lecz posiada inne haslo. Wprowadz haslo ^3ponownie^1.", PREFIX);
-		client_cmd(id, "messagemode ssnick_Podaj_Haslo");
-	}
-	else if (type == TYPE_IP) {
-		client_print_color(id, Blue, "^4[%s] ^1Istnieje juz usluga wykupiona na ten ^3adres IP^1, lecz posiada inne haslo. Wprowadz haslo ^3ponownie^1.", PREFIX);
-		client_cmd(id, "messagemode ssip_Podaj_Haslo");
-	}
 }
 
 _serviceChosen(id, type = 0, const szPassword[MAX_PASSWORD + 1] = "")
@@ -677,17 +629,17 @@ _serviceChosen(id, type = 0, const szPassword[MAX_PASSWORD + 1] = "")
 	DestroyForward(forward_handle);
 	
 	if (ret != SS_STOP) {
-		displayPaymentMethodMenu(id);
+		_openPaymentMethodMenu(id);
 	}
 }
 
-public displayPaymentMethodMenu(id)
+_openPaymentMethodMenu(id)
 {
 	new service[e_Service];
 	ArrayGetArray(services, which_service[id], service);
 	
-	new menu = menu_create("Wybierz metode platnosci", "menuPaymentMethod_handler");
-	new menu_callback = menu_makecallback("menuPaymentMethod_callback");
+	new menu = menu_create("Wybierz metode platnosci", "paymentMethodMenu_handler");
+	new menu_callback = menu_makecallback("paymentMethodMenu_callback");
 
 	menu_additem(menu, "SMS", "", 0, menu_callback);
 	menu_additem(menu, "Portfel", "", 0, menu_callback);
@@ -699,7 +651,7 @@ public displayPaymentMethodMenu(id)
 	keepDisplayingMenu(data);
 }
 
-public menuPaymentMethod_callback(id, menu, item)
+public paymentMethodMenu_callback(id, menu, item)
 {
 	switch (item) {
 		case 0: {
@@ -713,22 +665,22 @@ public menuPaymentMethod_callback(id, menu, item)
 	return ITEM_DISABLED;
 }
 
-public menuPaymentMethod_handler(id, menu, item)
+public paymentMethodMenu_handler(id, menu, item)
 {
 	remove_task(TASK_KEEP_DISPLAYING_MENU + id);
 	menu_destroy(menu);
 
 	switch (item) {
 		case 0: {
-			displayInfoSMS(id);
+			_displaySmsDetails(id);
 		}
 		case 1: {
-			purchaseService(id, "wallet");
+			_purchaseService(id, "wallet");
 		}
 	}
 }
 
-displayInfoSMS(id)
+_displaySmsDetails(id)
 {	
 	if (!is_user_connected(id)) {
 		return;
@@ -757,21 +709,21 @@ displayInfoSMS(id)
 	);
 	format(g_szTemp, charsmax(g_szTemp), "%s^n^n\wPo wyslaniu SMSa poczekaj na kod zwrotny.^nW celu wprowadzenia go, wcisnij: \y1^n^n\wAby wyjsc, wcisnij: \y0", g_szTemp);
 	
-	keepDisplayingInfoSMS(g_szTemp, TASK_KEEP_INFO_SMS + id);
+	keepDisplayingSmsDetails(g_szTemp, TASK_KEEP_INFO_SMS + id);
 }
 
-public keepDisplayingInfoSMS(const info[], id)
+public keepDisplayingSmsDetails(const info[], id)
 {	
 	id -= TASK_KEEP_INFO_SMS;
 	if (!is_user_connected(id)) {
 		return;
 	}
 		
-	show_menu(id, KEYS, info, 1, "SMS_Info");
-	set_task(0.9, "keepDisplayingInfoSMS", id+TASK_KEEP_INFO_SMS, info, strlen(info));
+	show_menu(id, KEYS, info, 1, "smsDetails");
+	set_task(0.9, "keepDisplayingSmsDetails", id+TASK_KEEP_INFO_SMS, info, strlen(info));
 }
 
-public infoSMS_handler(id, key)
+public smsDetails_handler(id, key)
 {	
 	if (task_exists(TASK_KEEP_INFO_SMS + id)) {
 		remove_task(TASK_KEEP_INFO_SMS + id);
@@ -789,7 +741,7 @@ public infoSMS_handler(id, key)
 }
 
 // Wprowadzanie kodu zwrotnego
-public kodZwrotny(id)
+public onSmsCodeEntered(id)
 {	
 	if (!is_user_connected(id)) {
 		return;
@@ -798,7 +750,7 @@ public kodZwrotny(id)
 	new sms_code[MAX_CODE + 1];
 	read_argv(1, sms_code, charsmax(sms_code));
 	
-	dodajLog2(id, "Wprowadzono kod: %s", sms_code);
+	_log(id, "Wprowadzono kod: %s", sms_code);
 	
 	if (!strlen(sms_code)) {
 		client_print_color(id, Red, "^4[%s] ^1Nie wprowadzono kodu zwrotnego.", PREFIX);
@@ -815,10 +767,10 @@ public kodZwrotny(id)
 		return;
 	}
 
-	purchaseService(id, "sms", sms_code);
+	_purchaseService(id, "sms", sms_code);
 }
 
-purchaseService(id, const method[], const sms_code[] = "") {
+_purchaseService(id, const method[], const sms_code[] = "") {
 	client_print_color(id, Red, "^4[%s] ^1Trwa przeprowadzanie zakupu...", PREFIX);
 
 	if (!_canUseShop()) {
@@ -886,12 +838,12 @@ purchaseService(id, const method[], const sms_code[] = "") {
 		formatex(url, charsmax(url), "%s/api/server/purchase?key=%s&language=polish", g_shopPageUrl, g_randomKeyMD5);
 	}
 
-	if (!makeRequest("POST", url, headers, body, "getWebPagePurchaseService", id)) {
+	if (!makeRequest("POST", url, headers, body, "onPurchaseServiceResponse", id)) {
 		client_print_color(id, Red, "^4[%s] ^1Nie udalo sie wykonac zapytania HTTP.", PREFIX);
 	}
 }
 
-public getWebPagePurchaseService(const content[], CURLcode: code, statusCode, playerId)
+public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, playerId)
 {
 	if (code != CURLE_OK) {
 		log_to_file(LOG_FILE, "Zakup nie zostal sfinalizowany z nieznanych powodow. Error: %d", code);
@@ -920,10 +872,10 @@ public getWebPagePurchaseService(const content[], CURLcode: code, statusCode, pl
 		log_amx("Invalid response: %s", content);
 	}
 
-	purchaseServicePost(playerId, return_value, szText, str_to_num(szPositive), str_to_num(szBsid), szWarnings);
+	_handlePurchaseServiceResponse(playerId, return_value, szText, str_to_num(szPositive), str_to_num(szBsid), szWarnings);
 }
 
-public purchaseServicePost(id, const return_value[], const szText[], positive, bsid, const szWarnings[])
+_handlePurchaseServiceResponse(id, const return_value[], const szText[], positive, bsid, const szWarnings[])
 {
 	if (! is_user_connected(id)) {
 		return;
@@ -972,7 +924,7 @@ public purchaseServicePost(id, const return_value[], const szText[], positive, b
 			format(amount, charsmax(amount), "%s %s", amount, service[TAG]);
 		}
 		
-		dodajLog2(id, "Wystapil blad podczas kupowania %s - %s; Taryfa: %d", service[sNAME], amount, price[pTARIFF]);
+		_log(id, "Wystapil blad podczas kupowania %s - %s; Taryfa: %d", service[sNAME], amount, price[pTARIFF]);
 		
 		return;
 	}
@@ -1021,30 +973,6 @@ public purchaseServicePost(id, const return_value[], const szText[], positive, b
 	}
 }
 
-/**
- * Dodanie kodu do bazy kodow
- *
- * @param const char[]	sms_code
- * @param int			sms_tariff	
- * @param bool			free
- */
-addCode(const sms_code[], sms_tariff, bool:free = true)
-{	
-	formatex(g_szTemp, charsmax(g_szTemp),
-		"INSERT INTO `%ssms_codes` (`code`, `tariff`, `free`) \
-		VALUES ('%s', '%d', '%d')",
-		TABLE_PREFIX, sms_code, sms_tariff, free
-	);
-	
-	if (!SqlTuple) {
-		return SS_ERROR;
-	}
-	
-	SQL_ThreadQuery(SqlTuple, "IgnoreHandle", g_szTemp);
-	dodajLog2(0, "Dodano SMSa do tabeli kodow do wykorzystania. Kod: %s Taryfa: %d", sms_code, sms_tariff);
-	return SS_OK;
-}
-
 // Wyswietlenie obecnych uslug gracza
 
 _showPlayerServices(id)
@@ -1075,11 +1003,11 @@ _showPlayerServices(id)
 			TABLE_PREFIX, TABLE_PREFIX, TABLE_PREFIX, g_serverId, TYPE_NICK, name, TYPE_IP, ip, TYPE_SID, sid
 		);
 	
-		SQL_ThreadQuery(SqlTuple, "getPlayerServices", g_szTemp, data, sizeof data);
+		SQL_ThreadQuery(SqlTuple, "getPlayerServicesHandler", g_szTemp, data, sizeof data);
 	}
 }
 
-public getPlayerServices(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
+public getPlayerServicesHandler(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
 {
 	new id = data[0];
 	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
@@ -1448,56 +1376,6 @@ public _usersCheckUser(id)
 	}
 }
 
-public brakSciezki(id, const path[])
-{	
-	dodajLog2(0, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
-	log_to_file(LOG_FILE, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
-	
-	if (id) {
-		client_print_color(id, Blue, "^4[%s] ^1Wystapil ^3blad ^1przy zapisywaniu ustawien. Prawdopodobnie ^4brak uprawnien^1.", PREFIX);
-	}
-}
-
-public reklama()
-{	
-	if (get_playersnum()>1) {
-		client_print_color(0, Red, "^4[%s] ^1Zapraszamy wszystkich do korzystania ze ^3sklepiku! ^1Wystarczy wpisac: ^4%s", PREFIX, sklep_komenda);
-	}
-}
-
-public dodajLog2(id, const szFormat[], any:...)
-{	
-	#if defined LOG_SQL
-	vformat(g_szTemp, charsmax(g_szTemp), szFormat, 3);
-	
-	if (is_user_connected(id)) {
-		new name[MAX_NAME + 1], ip[MAX_IP + 1], sid[MAX_SID + 1];
-		get_user_name(id, name, charsmax(name));
-		get_user_ip(id, ip, charsmax(ip), true);
-		get_user_authid(id, sid, charsmax(sid));
-		format(g_szTemp, charsmax(g_szTemp), "%s; %s; %s. %s", name, ip, sid, g_szTemp);
-	}
-	
-	log_to_sql(g_szTemp);
-	#endif
-}
-
-public log_to_sql(const text[])
-{
-	if (SqlTuple) {
-		format(g_szTemp, charsmax(g_szTemp), "%s. Serwer: %d", text, g_serverId);
-		escapeQuotes(g_szTemp, charsmax(g_szTemp));
-		
-		// Cannot be formatex, because param text is probably g_szTemp
-		format(g_szTemp, charsmax(g_szTemp),
-			"INSERT INTO `%slogs` (text) \
-			VALUES ('%s')",
-			TABLE_PREFIX, g_szTemp
-		);
-		SQL_ThreadQuery(SqlTuple, "IgnoreHandle", g_szTemp);
-	}
-}
-
 _loadSettings()
 {
 	formatex(g_szTemp, charsmax(g_szTemp),
@@ -1505,10 +1383,10 @@ _loadSettings()
 		WHERE `key` IN ('shop_url', 'random_key')",
 		TABLE_PREFIX
 	);
-	SQL_ThreadQuery(SqlTuple, "getSettingsHandler", g_szTemp);
+	SQL_ThreadQuery(SqlTuple, "loadSettingsHandler", g_szTemp);
 }
 
-public getSettingsHandler(FailState, Handle:Query, Error[], Errorcode)
+public loadSettingsHandler(FailState, Handle:Query, Error[], Errorcode)
 {	
 	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
 		return;
@@ -1563,10 +1441,12 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 
 	if (statusCode == 404) {
 		_errorNoServer();
+		return;
 	}
 
 	if (statusCode == 402) {
 		_errorOutdatedVersion();
+		return;
 	}
 
 	if (statusCode >= 300) {
@@ -1591,11 +1471,11 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 	extractFieldValue(content, "license_token", g_licenseToken, charsmax(g_licenseToken));
 
 	_validateLicense();
-	_getServicesData(szServices);
+	_getServices(szServices);
 	_getSmsNumbers();
 }
 
-_getServicesData(const services[])
+_getServices(const services[])
 {
 	// Sprawdzanie dostepnosci usług
 	new service_id[MAX_SERVICE_ID + 1], service_id_space[MAX_SERVICE_ID + 2 + 1], ids[512], ids_len = 0, ids_max = charsmax(ids);
@@ -1631,14 +1511,14 @@ _getServicesData(const services[])
 				TABLE_PREFIX, ids
 			);
 		
-			SQL_ThreadQuery(SqlTuple, "getServicesDataHandler", g_szTemp);
+			SQL_ThreadQuery(SqlTuple, "getServicesHandler", g_szTemp);
 		}
 	} else {
-		checkLoadedServices(); // Sprawdz zaladowane uslugi
+		_checkLoadedServices();
 	}
 }
 
-public getServicesDataHandler(FailState, Handle:Query, Error[], Errorcode) {
+public getServicesHandler(FailState, Handle:Query, Error[], Errorcode) {
 	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
 		return;
 	}
@@ -1674,8 +1554,7 @@ public getServicesDataHandler(FailState, Handle:Query, Error[], Errorcode) {
 		SQL_NextRow(Query);
 	}
 	
-	// Sprawdz zaladowane uslugi
-	checkLoadedServices();
+	_checkLoadedServices();
 	
 	// Jest chociaz jedna usluga
 	if (ids_len) {
@@ -1745,19 +1624,73 @@ public getSmsNumbersHandler(FailState, Handle:Query, Error[], Errorcode)
 	}
 }
 
-_canPayWithWallet(id)
-{
-	new steam_id[MAX_SID + 2];
-
-	get_user_authid(id, steam_id, charsmax(steam_id));
-	// CSGO uses different steamid prefix. STEAM_1 instead of STEAM_0.
-	// That is why we want to ignore SID prefix.
-	replace(steam_id, charsmax(steam_id), "STEAM_1", "");
-	replace(steam_id, charsmax(steam_id), "STEAM_0", "");
-	format(steam_id, charsmax(steam_id), "%s;", steam_id);
-
-	return containi(g_accountsSteamIds, steam_id) != -1;
+/**
+ * Dodanie kodu do bazy kodow
+ *
+ * @param const char[]	sms_code
+ * @param int			sms_tariff	
+ * @param bool			free
+ */
+_addSmsCode(const sms_code[], sms_tariff, bool:free = true)
+{	
+	formatex(g_szTemp, charsmax(g_szTemp),
+		"INSERT INTO `%ssms_codes` (`code`, `tariff`, `free`) \
+		VALUES ('%s', '%d', '%d')",
+		TABLE_PREFIX, sms_code, sms_tariff, free
+	);
+	
+	if (!SqlTuple) {
+		return SS_ERROR;
+	}
+	
+	SQL_ThreadQuery(SqlTuple, "IgnoreHandle", g_szTemp);
+	_log(0, "Dodano SMSa do tabeli kodow do wykorzystania. Kod: %s Taryfa: %d", sms_code, sms_tariff);
+	return SS_OK;
 }
+
+_log(id, const szFormat[], any:...)
+{	
+	#if defined LOG_SQL
+	vformat(g_szTemp, charsmax(g_szTemp), szFormat, 3);
+	
+	if (is_user_connected(id)) {
+		new name[MAX_NAME + 1], ip[MAX_IP + 1], sid[MAX_SID + 1];
+		get_user_name(id, name, charsmax(name));
+		get_user_ip(id, ip, charsmax(ip), true);
+		get_user_authid(id, sid, charsmax(sid));
+		format(g_szTemp, charsmax(g_szTemp), "%s; %s; %s. %s", name, ip, sid, g_szTemp);
+	}
+	
+	_logToSql(g_szTemp);
+	#endif
+}
+
+_logToSql(const text[])
+{
+	if (SqlTuple) {
+		format(g_szTemp, charsmax(g_szTemp), "%s. Serwer: %d", text, g_serverId);
+		escapeQuotes(g_szTemp, charsmax(g_szTemp));
+		
+		// Cannot be formatex, because param text is probably g_szTemp
+		format(g_szTemp, charsmax(g_szTemp),
+			"INSERT INTO `%slogs` (text) \
+			VALUES ('%s')",
+			TABLE_PREFIX, g_szTemp
+		);
+		SQL_ThreadQuery(SqlTuple, "IgnoreHandle", g_szTemp);
+	}
+}
+
+public displayCommercial()
+{	
+	if (get_playersnum() > 1) {
+		client_print_color(0, Red, "^4[%s] ^1Zapraszamy wszystkich do korzystania ze ^3sklepiku! ^1Wystarczy wpisac: ^4%s", PREFIX, sklep_komenda);
+	}
+}
+
+//
+// ----------------------------------------------- LICENSE ----------------------------------------------------
+//
 
 _validateLicense()
 {
@@ -1858,6 +1791,10 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	log_amx("Walidacja licencji zostala zakonczona pomyslnie");
 }
 
+//
+// ------------------------------------------------- HELPERS ----------------------------------------------------
+//
+
 _checkForSQLErrors(Handle:Query, FailState, Error[], Errorcode)
 {	
 	g_sqlConnected = true;
@@ -1882,94 +1819,111 @@ _checkForSQLErrors(Handle:Query, FailState, Error[], Errorcode)
 	return PLUGIN_CONTINUE;
 }
 
-_canUseShop()
-{
-	return !g_blocked && g_shopRegistered && get_pcvar_num(cvar_on) && g_sqlConnected;
-}
-
 public IgnoreHandle(FailState, Handle:Query, Error[], Errorcode)
 {	
 	_checkForSQLErrors(Query, FailState, Error, Errorcode);
 }
 
-/* #########################################################################################################################
- * ############################################### Zewnetrzne funkcje ######################################################
- * #########################################################################################################################
- */
- 
-public registerService(plugin, params)
+public keepDisplayingMenu(data[])
 {	
-	if (params != 1) {
-		log_to_file(LOG_FILE, "Wystapil blad podczas dodawania uslugi. Bledna ilosc argumentow funkcji ss_register_service");
-		return SS_BAD_ARGS;
-	}
-		
-	new id[MAX_SERVICE_ID + 1];
-	
-	get_string(1, id, charsmax(id));
-	
-	ArrayPushCell(service_plugins, plugin);
-	ArrayPushString(service_ids, id);
-	
-	return SS_OK;
-}
-
-// Dodawanie kodu do listy kodow do wykorzystania
-public native_addCode(plugin, params)
-{	
-	if (params != 2) {
-		return SS_BAD_ARGS;
+	new id = data[0];
+	if (!is_user_connected(id)) {
+		menu_destroy(data[1]);
+		return;
 	}
 	
-	new sms_code[MAX_CODE + 1], tariff;
-	get_string(1, sms_code, charsmax(sms_code));
-	tariff = get_param(2);
-	
-	return addCode(sms_code, tariff);
+	new menu, newmenu;
+	player_menu_info(id, menu, newmenu);
+	if (newmenu != data[1]) {
+		menu_display(id, data[1]);
+	}
+			
+	set_task(0.1, "keepDisplayingMenu", TASK_KEEP_DISPLAYING_MENU + id, data, 2);
 }
 
-// Logowanie danych z pluginow zewnetrznych
-public dodajLog(plugin, params)
+_invalidPath(id, const path[])
 {	
-	#if defined LOG_SQL
-	vdformat(g_szTemp, charsmax(g_szTemp), 1, 2);
-	log_to_sql(g_szTemp);
-	#endif
+	_log(0, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
+	log_to_file(LOG_FILE, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
+	
+	if (id) {
+		client_print_color(id, Blue, "^4[%s] ^1Wystapil ^3blad ^1przy zapisywaniu ustawien. Prawdopodobnie ^4brak uprawnien^1.", PREFIX);
+	}
 }
 
-public native_showServicePurchase(plugin, params)
+_getServicePluginByID(const id[])
 {
-	if (params != 2) {
-		return SS_BAD_ARGS;
+	new tmp[MAX_SERVICE_ID + 1];
+	for (new i = 0; i < ArraySize(service_ids); ++i) {
+		ArrayGetString(service_ids, i, tmp, charsmax(tmp));
+		if (equali(id, tmp)) {
+			return ArrayGetCell(service_plugins, i);
+		}
 	}
 	
-	new service_id[MAX_SERVICE_ID + 1];
-	new id = get_param(1);
-	get_string(2, service_id, charsmax(service_id));
-	
-	wyborMenu(id, _getServiceByID(service_id));
-	return SS_OK;
+	return -1;
 }
 
-public native_infoSMS(plugin, params)
-{	
-	if (params != 1) {
-		return SS_BAD_ARGS;
+_getServiceByID(const id[])
+{
+	new service[e_Service];
+	for (new i = 0; i < ArraySize(services); ++i) {
+		ArrayGetArray(services, i, service);
+		if (equal(id, service[sID])) {
+			return i;
+		}
 	}
-	
-	displayInfoSMS(get_param(1));
-	return SS_OK;
+	return -1;
 }
 
-public bool:native_is_steam(plugin, params)
+_getNumberByTariff(tariff, output[], len)
 {	
-	if (params != 1) {
-		return false;
+	new sms[e_SMS];
+	for (new i = 0; i < ArraySize(smses); ++i) {
+		ArrayGetArray(smses, i, sms);
+		if (tariff == sms[sTARIFF]) {
+			copy(output, len, sms[NUMBER]);
+			return;
+		}
 	}
-	
-	return is_steam(get_param(1));
 }
-// ################################
+
+_checkLoadedServices()
+{	
+	if (!ArraySize(services)) {
+		log_amx("Nie zaladowano zadnych uslug do zakupienia.");
+	} else {
+		log_amx("Zaladowano %d uslug do zakupienia.", ArraySize(services));
+	}
+}
+
+_canUseShop()
+{
+	return !g_blocked && g_shopRegistered && get_pcvar_num(cvar_on) && g_sqlConnected;
+}
+
+_canPayWithWallet(id)
+{
+	new steam_id[MAX_SID + 2];
+
+	get_user_authid(id, steam_id, charsmax(steam_id));
+	// CSGO uses different steamid prefix. STEAM_1 instead of STEAM_0.
+	// That is why we want to ignore SID prefix.
+	replace(steam_id, charsmax(steam_id), "STEAM_1", "");
+	replace(steam_id, charsmax(steam_id), "STEAM_0", "");
+	format(steam_id, charsmax(steam_id), "%s;", steam_id);
+
+	return containi(g_accountsSteamIds, steam_id) != -1;
+}
+
+bool:_isDebug()
+{
+	return false;
+}
+
+//
+// ------------------------------------------------- ERRORS ----------------------------------------------------
+//
 
 // License
 _errorUnknown() {
@@ -2033,7 +1987,10 @@ _error51() {
 _make_error(message[]) {
 	set_fail_state(message);
 }
-/* ############# Koniec: Licencja ################## */
+
+//
+// ------------------------------------------------- HTTP Requests ----------------------------------------------------
+//
 
 /**
  * Make HTTP request
@@ -2051,7 +2008,7 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 {
 	new CURL: handle, curl_slist: newHeaders, data[requestStruct];
 
-	if (isDebug()) {
+	if (_isDebug()) {
 		log_amx("Request | %s %s %s", method, url, body);
 	}
    	
@@ -2118,7 +2075,7 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 
 runRequestCallback(const function[], const httpResponseContent[], playerId, CURLcode: code, statusCode)
 {
-	if (isDebug()) {
+	if (_isDebug()) {
 		log_amx("Request response | %d %d %s", code, statusCode, httpResponseContent);
 	}
 
@@ -2133,51 +2090,87 @@ runRequestCallback(const function[], const httpResponseContent[], playerId, CURL
 	}
 }
 
-// ----------------------------------------------------- End of requests --------------------------------------------------------
 
-_getServicePluginByID(const id[])
-{
-	new tmp[MAX_SERVICE_ID + 1];
-	for (new i = 0; i < ArraySize(service_ids); ++i) {
-		ArrayGetString(service_ids, i, tmp, charsmax(tmp));
-		if (equali(id, tmp)) {
-			return ArrayGetCell(service_plugins, i);
-		}
+//
+// ------------------------------------------------- External Functions ----------------------------------------------------
+//
+ 
+public native_registerService(plugin, params)
+{	
+	if (params != 1) {
+		log_to_file(LOG_FILE, "Wystapil blad podczas dodawania uslugi. Bledna ilosc argumentow funkcji ss_register_service");
+		return SS_BAD_ARGS;
+	}
+		
+	new id[MAX_SERVICE_ID + 1];
+	
+	get_string(1, id, charsmax(id));
+	
+	ArrayPushCell(service_plugins, plugin);
+	ArrayPushString(service_ids, id);
+	
+	return SS_OK;
+}
+
+// Dodawanie kodu do listy kodow do wykorzystania
+public native_addSmsCode(plugin, params)
+{	
+	if (params != 2) {
+		return SS_BAD_ARGS;
 	}
 	
-	return -1;
+	new sms_code[MAX_CODE + 1], tariff;
+	get_string(1, sms_code, charsmax(sms_code));
+	tariff = get_param(2);
+	
+	return _addSmsCode(sms_code, tariff);
 }
 
-_getServiceByID(const id[])
-{
-	new service[e_Service];
-	for (new i = 0; i < ArraySize(services); ++i) {
-		ArrayGetArray(services, i, service);
-		if (equal(id, service[sID])) {
-			return i;
-		}
-	}
-	return -1;
-}
-
-_getNumberByTariff(tariff, output[], len)
+// Logowanie danych z pluginow zewnetrznych
+public native_addLog(plugin, params)
 {	
-	new sms[e_SMS];
-	for (new i = 0; i < ArraySize(smses); ++i) {
-		ArrayGetArray(smses, i, sms);
-		if (tariff == sms[sTARIFF]) {
-			copy(output, len, sms[NUMBER]);
-			return;
-		}
-	}
+	#if defined LOG_SQL
+	vdformat(g_szTemp, charsmax(g_szTemp), 1, 2);
+	_logToSql(g_szTemp);
+	#endif
 }
 
-bool:isDebug()
+public native_showServicePurchase(plugin, params)
 {
-	return false;
+	if (params != 2) {
+		return SS_BAD_ARGS;
+	}
+	
+	new service_id[MAX_SERVICE_ID + 1];
+	new id = get_param(1);
+	get_string(2, service_id, charsmax(service_id));
+	
+	_openPricingMenu(id, _getServiceByID(service_id));
+	return SS_OK;
 }
 
+public native_displaySmsDetails(plugin, params)
+{	
+	if (params != 1) {
+		return SS_BAD_ARGS;
+	}
+	
+	_displaySmsDetails(get_param(1));
+	return SS_OK;
+}
+
+public bool:native_is_steam(plugin, params)
+{	
+	if (params != 1) {
+		return false;
+	}
+	
+	return is_steam(get_param(1));
+}
+
+//
 // ------------------------------------------------- Versions Compatibility ----------------------------------------------------
+//
 
 vc_md5(const szString[], md5buffer[34])
 {
