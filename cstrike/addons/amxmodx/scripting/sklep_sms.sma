@@ -155,8 +155,6 @@ public plugin_natives()
 	register_native("ss_add_code", "native_addSmsCode");
 	register_native("ss_log", "native_addLog");
 	register_native("ss_is_steam", "native_is_steam");
-
-	forwrdClientAccess = CreateMultiForward("ss_client_access", ET_IGNORE, FP_CELL, FP_CELL);
 }
 
 public plugin_precache()
@@ -254,6 +252,7 @@ public plugin_init()
 	}
 
 	g_signature = random_num(1, 99999999);
+	forwrdClientAccess = CreateMultiForward("ss_client_access", ET_IGNORE, FP_CELL, FP_CELL);
 }
 
 public plugin_cfg() {
