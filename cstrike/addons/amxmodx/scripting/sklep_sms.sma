@@ -32,6 +32,7 @@ const MAX_CONTACT = 64;
 const MAX_RANDOM_KEY = 32;
 const MAX_PAYMENT_MODULE_ID = 32;
 
+new bool:g_AmxbansExists = false;
 
 // FORWARDs
 new forwrdClientAccess;
@@ -40,12 +41,42 @@ new forwrdClientAccess;
 new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_host, cvar_user, cvar_pass, cvar_db, cvar_server_ip, cvar_silent_command;
 new sklep_komenda[MAX_COMMAND + 1], przeladuj_komenda[MAX_COMMAND + 1], uslugi_komenda[MAX_COMMAND + 1], show_info;
 
-enum e_KeyValue {
-	kvKEY[128],
-	kvVALUE[128]
-};
+// MySQL
+new const TABLE_PREFIX[] = "ss_";
+new Handle:SqlTuple;
+new bool:g_sqlConnected = false;
+new sql_host[MAX_URL_HOST + 1], sql_user[32], sql_pass[32], sql_db[32];
+new const all_flags[] = "abcdefghijklmnopqrstuyvwxz";
+new g_szTemp[4096];
 
-// Rejestracja uslug
+// Server
+new g_serverIp[MAX_IP + 1],
+	g_serverPort[MAX_PORT + 1],
+	g_serverName[MAX_SERVER_NAME + 1],
+	g_signature,
+	g_configPath[128];
+
+// Server config
+new g_serverId,
+	g_currency[16],
+	g_smsPlatformId,
+	g_smsModuleId[MAX_PAYMENT_MODULE_ID + 1],
+	g_contact[MAX_CONTACT + 1], 
+	g_randomKey[MAX_RANDOM_KEY + 1], 
+	g_randomKeyMD5[34], 
+	g_shopPageUrl[MAX_URL + 1],
+	g_smsText[MAX_SMS_TEXT + 1],
+	Float:g_vat,
+	g_accountsSteamIds[1024] = "",
+	g_licenseToken[63];
+
+// License
+new bool:g_footer = true,
+	bool:g_blocked = false,
+	bool:g_validationAttempt = false,
+	bool:g_shopRegistered = false;
+
+// Services
 enum e_Service {
 	sID[MAX_SERVICE_ID + 1], 
 	PLUGIN, 
@@ -61,14 +92,14 @@ new Array:service_plugins,
 	Array:service_ids, 
 	Array:services;
 	
-// Numery i taryfy SMS
+// SMS numbers and tariffs
 enum e_SMS {
 	NUMBER[MAX_NUMBER + 1], 
 	sTARIFF, 
 };
 new Array:smses;
 
-// Lista cen (taryf) dla usług
+// Pricing
 enum e_Price {
 	pSERVICE[MAX_SERVICE_ID + 1], 
 	pTARIFF, 
@@ -76,21 +107,18 @@ enum e_Price {
 };
 new Array:pricelist;
 
-//Dodatkowe zmienne
+// Dodatkowe zmienne
 new which_service[33], 
 	which_price[33], 
 	b_passwords[33][MAX_PASSWORD + 1], 
 	b_types[33];
 
-// Sciezka do pliku konfiguracyjnego
-new config_path[128];
-
 // Requests
 const MAX_RESPONSE = 1024;
-const MAX_RESPONSE_COUNT = 5;
-new g_requestCounter = 0;
-new g_responses[MAX_RESPONSE_COUNT][MAX_RESPONSE + 1];
-new bool:g_requestsInProgress[MAX_RESPONSE_COUNT];
+const MAX_REQUESTS_COUNT = 5;
+new g_requestCounter = 0,
+	g_responses[MAX_REQUESTS_COUNT][MAX_RESPONSE + 1],
+	bool:g_requestsInProgress[MAX_REQUESTS_COUNT];
 
 enum requestStruct {
 	RequestId,
@@ -98,25 +126,6 @@ enum requestStruct {
 	RequestCallback[MAX_FUNCTION + 1],
 	RequestPlayerId,
 };
-
-// License
-new g_licenseToken[63];
-new bool:g_footer = true;
-new g_serverIp[MAX_IP + 1];
-new g_serverPort[MAX_PORT + 1];
-new g_serverName[MAX_SERVER_NAME + 1];
-new bool:g_blocked = false;
-new bool:g_validationAttempt = false;
-new g_signature;
-
-// MySQL
-new const TABLE_PREFIX[] = "ss_";
-new Handle:SqlTuple;
-new bool:g_sqlConnected = false;
-new sql_host[MAX_URL_HOST + 1], sql_user[32], sql_pass[32], sql_db[32];
-new g_serverId;
-new const all_flags[] = "abcdefghijklmnopqrstuyvwxz";
-new g_szTemp[4096];
 
 // Players flags
 enum e_PlayerFlags {
@@ -128,23 +137,6 @@ enum e_PlayerFlags {
 new Array:g_playersFlags;
 new bool:g_playersLoaded = false;
 new g_lastReassign;
-
-// Accounts
-new g_accountsSteamIds[4096] = "";
-
-// Settings
-new g_currency[16],
-	g_smsPlatformId,
-	g_smsModuleId[MAX_PAYMENT_MODULE_ID + 1],
-	g_contact[MAX_CONTACT + 1], 
-	g_randomKey[MAX_RANDOM_KEY + 1], 
-	g_randomKeyMD5[34], 
-	g_shopPageUrl[MAX_URL + 1],
-	g_smsText[MAX_SMS_TEXT + 1],
-	Float:g_vat;
-
-new bool:g_shopRegistered = false;
-new bool:g_AmxbansExists = false;
 
 public plugin_natives()
 {
@@ -159,53 +151,9 @@ public plugin_natives()
 
 public plugin_precache()
 {
-	get_configsdir(config_path, charsmax(config_path));
+	get_configsdir(g_configPath, charsmax(g_configPath));
 	
-	// Tworzenie pliku sklep_sms.cfg
-	format(config_path, charsmax(config_path), "%s/%s", config_path, CFG_FILE);
-	if (!file_exists(config_path)) {
-		new szText[1024], iLen=0, iMax=charsmax(szText);
-		iLen += formatex(szText[iLen], iMax-iLen, "// ----------------------------------^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// SKLEP SMS: - Plik Konfiguracyjny^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// ----------------------------------^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Wlacza / Wylacza sklepik^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// 1 - wlaczony^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// 0 - wylaczony^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_on ^"1^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie w celu wyswietlenia menu sklepiku^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_sklep_komenda ^"/sklepsms^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie w celu przeladowania flag wykupionych w sklepiku^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_przeladuj_komenda ^"/przeladuj^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie, aby zobaczyc swoje aktywne uslugi^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_uslugi_komenda ^"/uslugi^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Czy po uzyciu powyzszych komend wyswietla sie one w chacie^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_ciche_komendy ^"0^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Wyswietlac informacje o sklepie na chacie?^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_info ^"1^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// #########################^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// ###  Dane Bazy MySQL  ###^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// #########################^n^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Adres IP^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_host ^"^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Uzytkownik^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_user ^"^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Haslo^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_pass ^"^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Nazwa bazy danych");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_db ^"^"");
-		write_file(config_path, szText);
-	}
+	_createShopSmsConfigFile();
 	
 	cvar_on 	= register_cvar("sklepsms_on", "1");
 	cvar_sklep 	= register_cvar("sklepsms_sklep_komenda", "/sklepsms");
@@ -219,9 +167,9 @@ public plugin_precache()
 	cvar_server_ip	= register_cvar("sklepsms_server_ip", "");
 	cvar_silent_command	= register_cvar("sklepsms_ciche_komendy", "0");
 	
-	// Wczytywanie confingu
-	if (file_exists(config_path)) {
-		server_cmd("exec %s", config_path);
+	// Read config
+	if (file_exists(g_configPath)) {
+		server_cmd("exec %s", g_configPath);
 	}
 	
 	service_plugins = ArrayCreate();
@@ -257,13 +205,13 @@ public plugin_init()
 
 public plugin_cfg() {
 	// Blad przy tworzeniu (brak uprawnien)
-	if (!file_exists(config_path)) {
-		_invalidPath(0, config_path);
+	if (!file_exists(g_configPath)) {
+		_invalidPath(0, g_configPath);
 	}
 		
 	// Ponowne wczytywanie confingu
-	if (file_exists(config_path)) {
-		server_cmd("exec %s", config_path);
+	if (file_exists(g_configPath)) {
+		server_cmd("exec %s", g_configPath);
 		server_exec();
 	}
 	
@@ -278,7 +226,9 @@ public plugin_cfg() {
 	// Get server ip
 	new fullIp[MAX_FULL_IP];
 	get_pcvar_string(cvar_server_ip, fullIp, charsmax(fullIp));
-	if (!strlen(fullIp)) { // Brak ip w cvarach
+
+	// Brak ip w cvarach
+	if (!strlen(fullIp)) {
 		get_user_ip(0, fullIp, charsmax(fullIp), false);
 	}
 	
@@ -875,33 +825,21 @@ _assignPlayerFlags(id)
 			}
 		}
 		
-		if (strlen(player_flags[pfPASSWORD])) {
-			new password[MAX_PASSWORD + 1], password_md5[34];
-			
-			get_user_info(id, "_pw", password, charsmax(password));
-			vc_md5(password, password_md5);
-			
-			if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
-				get_user_info(id, "_pw2", password, charsmax(password));
-				vc_md5(password, password_md5);
-				if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
-					get_user_info(id, "_pw3", password, charsmax(password));
-					vc_md5(password, password_md5);
-					if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
-						get_user_info(id, "_ss", password, charsmax(password));
-						vc_md5(password, password_md5);
-						if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
-							if (! (player_flags[pfTYPE]&FLAG_KICK)) { // Nie kickuj gracza, tylko mu nie przydziel flag
-								continue;
-							}
-						
-							server_cmd("kick #%d ^"Nieprawidlowe haslo^"", get_user_userid(id));
-							
-							return;
-						}
-					}
-				}
+		if (
+			strlen(player_flags[pfPASSWORD]) &&
+			!_checkPassword(id, "_pw", player_flags[pfPASSWORD]) &&
+			!_checkPassword(id, "_pw2", player_flags[pfPASSWORD]) &&
+			!_checkPassword(id, "_pw3", player_flags[pfPASSWORD]) && 
+			!_checkPassword(id, "_ss", player_flags[pfPASSWORD])
+		) {
+
+			if (player_flags[pfTYPE]&FLAG_KICK) {
+				server_cmd("kick #%d ^"Nieprawidlowe haslo^"", get_user_userid(id));
+				return;
 			}
+
+			// Do not kick the player, instead do not assign him any flags
+			continue;
 		}
 		
 		set_user_flags(id, player_flags[pfFLAGS]);
@@ -911,8 +849,18 @@ _assignPlayerFlags(id)
 	}
 }
 
+_checkPassword(id, const tag[], const valid_password[])
+{
+	new password[MAX_PASSWORD + 1], password_md5[34];
+			
+	get_user_info(id, tag, password, charsmax(password));
+	vc_md5(password, password_md5);
+
+	return equal(password_md5, valid_password) || equal(password, valid_password);
+}
+
 //
-// ------------------------------------------------- Shop Menu ----------------------------------------------------
+// ------------------------------------------------- SHOP MENU ----------------------------------------------------
 //
 
 _openShopMenu(id)
@@ -1698,6 +1646,55 @@ public displayCommercial()
 	}
 }
 
+_createShopSmsConfigFile()
+{
+	format(g_configPath, charsmax(g_configPath), "%s/%s", g_configPath, CFG_FILE);
+	
+	if (!file_exists(g_configPath)) {
+		new szText[1024], iLen=0, iMax=charsmax(szText);
+		iLen += formatex(szText[iLen], iMax-iLen, "// ----------------------------------^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// SKLEP SMS: - Plik Konfiguracyjny^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// ----------------------------------^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Wlacza / Wylacza sklepik^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// 1 - wlaczony^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// 0 - wylaczony^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_on ^"1^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie w celu wyswietlenia menu sklepiku^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_sklep_komenda ^"/sklepsms^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie w celu przeladowania flag wykupionych w sklepiku^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_przeladuj_komenda ^"/przeladuj^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie, aby zobaczyc swoje aktywne uslugi^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_uslugi_komenda ^"/uslugi^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Czy po uzyciu powyzszych komend wyswietla sie one w chacie^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_ciche_komendy ^"0^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Wyswietlac informacje o sklepie na chacie?^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_info ^"1^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// #########################^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// ###  Dane Bazy MySQL  ###^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// #########################^n^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Adres IP^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_host ^"^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Uzytkownik^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_user ^"^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Haslo^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_pass ^"^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Nazwa bazy danych");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_db ^"^"");
+		write_file(g_configPath, szText);
+	}
+}
+
 //
 // ----------------------------------------------- LICENSE ----------------------------------------------------
 //
@@ -2039,7 +2036,7 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
    		return false;
    	}
 
-   	new requestId = g_requestCounter++ % MAX_RESPONSE_COUNT;
+   	new requestId = g_requestCounter++ % MAX_REQUESTS_COUNT;
 
    	if (g_requestsInProgress[requestId]) {
    		log_to_file(LOG_FILE, "Pula requestetow jest pelna. Request nie zostal wykonany.");
