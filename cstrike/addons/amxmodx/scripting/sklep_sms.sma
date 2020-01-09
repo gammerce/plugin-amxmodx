@@ -907,7 +907,8 @@ _assignPlayerFlags(id)
 		
 		set_user_flags(id, player_flags[pfFLAGS]);
 
-		// TODO Execute forward
+		new ret;
+		ExecuteForward(forwrdClientAccess, ret, id, player_flags[pfFLAGS]);
 	}
 }
 
