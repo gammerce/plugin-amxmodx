@@ -347,7 +347,567 @@ public sayHook(id)
 	return get_pcvar_num(cvar_silent_command) ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
 }
 
+//
+// ----------------------------------------- SERVER CONFIGURATION --------------------------------------------
+//
+
+_loadSettings()
+{
+	formatex(g_szTemp, charsmax(g_szTemp),
+		"SELECT * FROM `%ssettings` \
+		WHERE `key` IN ('shop_url', 'random_key')",
+		TABLE_PREFIX
+	);
+	SQL_ThreadQuery(SqlTuple, "loadSettingsHandler", g_szTemp);
+}
+
+public loadSettingsHandler(FailState, Handle:Query, Error[], Errorcode)
+{	
+	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
+		return;
+	}
+
+	while (SQL_MoreResults(Query)) {
+		new key[128], value[256];
+		
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "key"), key, charsmax(key));
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "value"), value, charsmax(value));
+
+		if (equali(key, "shop_url")) {
+			copy(g_shopPageUrl, charsmax(g_shopPageUrl), value);
+			
+			// Remove trailing slash
+			if (strlen(g_shopPageUrl) && g_shopPageUrl[strlen(g_shopPageUrl) - 1] == '/') {
+				g_shopPageUrl[strlen(g_shopPageUrl) - 1] = '^0';
+			}
+			
+			if (! strlen(g_shopPageUrl)) {
+				_errorNoShopUrl();
+				return;
+			}
+		}
+		else if (equali(key, "random_key")) {
+			copy(g_randomKey, charsmax(g_randomKey), value);
+			vc_md5(g_randomKey, g_randomKeyMD5); // Hashujemy random key
+		}
+		
+		SQL_NextRow(Query);
+	}
+	
+	_loadServerConfig();
+}
+
+_loadServerConfig()
+{
+	new url[MAX_URL + 1];
+	formatex(url, charsmax(url), "%s/api/server/config?key=%s&ip=%s&port=%s&version=%s", g_shopPageUrl, g_randomKeyMD5, g_serverIp, g_serverPort, VERSION);
+
+	if (!makeRequest("GET", url, 0, "", "onLoadServerConfigResponse")) {
+		_errorConfigFailed(999);
+	}
+}
+
+public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, playerId)
+{
+	if (code != CURLE_OK) {
+		_errorConfigFailed(code);
+		return;
+	}
+
+	if (statusCode == 404) {
+		_errorNoServer();
+		return;
+	}
+
+	if (statusCode == 402) {
+		_errorOutdatedVersion();
+		return;
+	}
+
+	if (statusCode >= 300) {
+		_errorConfigInvalidResponse(statusCode);
+		return;
+	}
+
+	new szServices[512];
+
+	extractFieldValue(content, "id", g_szTemp, charsmax(g_szTemp));
+	g_serverId = str_to_num(g_szTemp);
+	extractFieldValue(content, "sms_platform_id", g_szTemp, charsmax(g_szTemp));
+	g_smsPlatformId = str_to_num(g_szTemp);
+	extractFieldValue(content, "sms_module_id", g_smsModuleId, charsmax(g_smsModuleId));
+	extractFieldValue(content, "sms_text", g_smsText, charsmax(g_smsText));
+	extractFieldValue(content, "services", szServices, charsmax(szServices));
+	extractFieldValue(content, "steam_ids", g_accountsSteamIds, charsmax(g_accountsSteamIds));
+	extractFieldValue(content, "currency", g_currency, charsmax(g_currency));
+	extractFieldValue(content, "contact", g_contact, charsmax(g_contact));
+	extractFieldValue(content, "vat", g_szTemp, charsmax(g_szTemp));
+	g_vat = str_to_float(g_szTemp);
+	extractFieldValue(content, "license_token", g_licenseToken, charsmax(g_licenseToken));
+
+	_validateLicense();
+	_getServices(szServices);
+	_getSmsNumbers();
+}
+
+_getServices(const services[])
+{
+	// Sprawdzanie dostepnosci usług
+	new service_id[MAX_SERVICE_ID + 1], service_id_space[MAX_SERVICE_ID + 2 + 1], ids[512], ids_len = 0, ids_max = charsmax(ids);
+	for (new i = 0; i < ArraySize(service_ids); ++i) {
+		ArrayGetString(service_ids, i, service_id, charsmax(service_id));
+		formatex(service_id_space, charsmax(service_id_space), " %s ", service_id);
+		
+		if (containi(services, service_id_space) != -1) {
+			if (ids_len) {
+				ids_len += formatex(ids[ids_len], ids_max-ids_len, ",");
+			}
+				
+			ids_len += formatex(ids[ids_len], ids_max-ids_len, "'%s'", service_id);
+		}
+		else { // Usługa nieaktywna, lub brak usługi
+			// Zatrzymaj plugin uslugi
+			new plugin_name[64];
+			get_plugin(ArrayGetCell(service_plugins, i), plugin_name, charsmax(plugin_name));
+			pause("acd", plugin_name);
+			ArrayDeleteItem(service_ids, i);
+			ArrayDeleteItem(service_plugins, i);
+			i -= 1;
+		}
+	}
+	
+	// Jest chociaz jedna usluga, wiec pobieramy dane o uslugach
+	if (ids_len) {
+		if (SqlTuple) {
+			formatex(g_szTemp, charsmax(g_szTemp),
+				"SELECT * FROM `%sservices` \
+				WHERE `id` IN(%s) \
+				ORDER BY `order` ASC",
+				TABLE_PREFIX, ids
+			);
+		
+			SQL_ThreadQuery(SqlTuple, "getServicesHandler", g_szTemp);
+		}
+	} else {
+		_checkLoadedServices();
+	}
+}
+
+public getServicesHandler(FailState, Handle:Query, Error[], Errorcode) {
+	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
+		return;
+	}
+
+	new service[e_Service];
+	new ids[512], ids_len = 0, ids_max = charsmax(ids);
+	while (SQL_MoreResults(Query))
+	{
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "id"), service[sID], MAX_SERVICE_ID);
+		service[PLUGIN] = _getServicePluginByID(service[sID]);
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "name"), service[sNAME], MAX_SERVICE_NAME);
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "short_description"), service[DESCRIPTION], MAX_DESCRIPTION);
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tag"), service[TAG], MAX_SERVICE_TAG);
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "flags"), service[FLAGS], 26);
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "groups"), service[GROUPS], 32);
+		service[TYPES] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "types"));
+		
+		ArrayPushArray(services, service);
+			
+		// Wyslanie danych uslugi do pluginu
+		new ret, forward_handle;
+		forward_handle = CreateOneForward(service[PLUGIN], "ss_service_data", FP_STRING, FP_STRING);
+		ExecuteForward(forward_handle, ret, service[sNAME], service[FLAGS]);
+		DestroyForward(forward_handle);
+		
+		// Przygotowywanie zapytania o priceliste
+		if (ids_len) {
+			ids_len += formatex(ids[ids_len], ids_max-ids_len, ",");
+		}
+		
+		ids_len += formatex(ids[ids_len], ids_max-ids_len, "'%s'", service[sID]);
+		
+		SQL_NextRow(Query);
+	}
+	
+	_checkLoadedServices();
+	
+	// Jest chociaz jedna usluga
+	if (ids_len) {
+		if (SqlTuple) {
+			formatex(g_szTemp, charsmax(g_szTemp), 
+				"SELECT * FROM `%spricelist` \
+				WHERE (`server`='%d' OR `server`='-1') AND `service` IN (%s) \
+				ORDER BY `amount` ASC", 
+				TABLE_PREFIX, g_serverId, ids
+			);
+			SQL_ThreadQuery(SqlTuple, "getPriceListHandler", g_szTemp);
+		}
+	}
+}
+
+public getPriceListHandler(FailState, Handle:Query, Error[], Errorcode)
+{		
+	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
+		return;
+	}
+
+	while (SQL_MoreResults(Query))
+	{
+		new price[e_Price];
+		
+		price[pTARIFF] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tariff"));
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "service"), price[pSERVICE], MAX_SERVICE_ID);
+		price[AMOUNT] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "amount"));
+		
+		ArrayPushArray(pricelist, price);
+		
+		SQL_NextRow(Query);
+	}
+}
+
+_getSmsNumbers()
+{
+	if (SqlTuple) {
+		new payment_module_id[MAX_PAYMENT_MODULE_ID + 1];
+		formatex(payment_module_id, charsmax(payment_module_id), "%s", g_smsModuleId);
+		escapeQuotes(payment_module_id, charsmax(payment_module_id));
+		
+		formatex(g_szTemp, charsmax(g_szTemp),
+			"SELECT `number`, `tariff` \
+			FROM `%ssms_numbers` \
+			WHERE `service` = '%s'",
+			TABLE_PREFIX, payment_module_id
+		);
+		SQL_ThreadQuery(SqlTuple, "getSmsNumbersHandler", g_szTemp);
+	}
+}
+
+public getSmsNumbersHandler(FailState, Handle:Query, Error[], Errorcode)
+{	
+	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
+		return;
+	}
+
+	new sms[e_SMS];
+	while (SQL_MoreResults(Query))
+	{
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "number"), sms[NUMBER], MAX_NUMBER);
+		sms[sTARIFF] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tariff"));
+		ArrayPushArray(smses, sms);
+		
+		SQL_NextRow(Query);
+	}
+}
+
+//
+// --------------------------------------------- PLAYERS FLAGS ------------------------------------------------
+//
+
+/**
+ * Funkcja wczytujaca z bazy ponownie dane graczy
+ */
+public command_loadPlayersServices()
+{	
+	_loadPlayersServices(true);
+}
+
+public command_reassignPlayersFlags(id)
+{	
+	if (g_lastReassign + 10 > get_systime()) {
+		client_print_color(id, Red, "^4[%s] ^1Ktos przed chwila przeladowal liste. Odczekaj chwile.", PREFIX);
+		return;
+	}
+	
+	g_lastReassign = get_systime();
+	_reassignPlayersFlags();
+
+	if (is_user_connected(id)) {
+		client_print_color(id, Red, "^4[%s] ^1Prawidlowo przeladowano liste flag wykupionych w sklepiku.", PREFIX);
+	}
+}
+
+_loadPlayersServices(bool:reloadAmxbans) {
+	// Czyscimy dotychczasowe dane
+	ArrayClear(g_playersFlags);
+	g_playersLoaded = false;
+	
+	if (SqlTuple) {
+		new iLen = 0, iMax = charsmax(g_szTemp);
+
+		iLen += formatex(g_szTemp[iLen], iMax - iLen,
+			"SELECT f.type, f.auth_data, f.password, \
+			(f.a > UNIX_TIMESTAMP() OR f.a = '-1') AS `a`, \
+			(f.b > UNIX_TIMESTAMP() OR f.b = '-1') AS `b`, \
+			(f.c > UNIX_TIMESTAMP() OR f.c = '-1') AS `c`, \
+			(f.d > UNIX_TIMESTAMP() OR f.d = '-1') AS `d`, \
+			(f.e > UNIX_TIMESTAMP() OR f.e = '-1') AS `e`, \
+			(f.f > UNIX_TIMESTAMP() OR f.f = '-1') AS `f`, \
+			(f.g > UNIX_TIMESTAMP() OR f.g = '-1') AS `g`, \
+			(f.h > UNIX_TIMESTAMP() OR f.h = '-1') AS `h`, "
+		);
+		
+		iLen += formatex(g_szTemp[iLen], iMax - iLen,
+			"(f.i > UNIX_TIMESTAMP() OR f.i = '-1') AS `i`, \
+			(f.j > UNIX_TIMESTAMP() OR f.j = '-1') AS `j`, \
+			(f.k > UNIX_TIMESTAMP() OR f.k = '-1') AS `k`, \
+			(f.l > UNIX_TIMESTAMP() OR f.l = '-1') AS `l`, \
+			(f.m > UNIX_TIMESTAMP() OR f.m = '-1') AS `m`, \
+			(f.n > UNIX_TIMESTAMP() OR f.n = '-1') AS `n`, \
+			(f.o > UNIX_TIMESTAMP() OR f.o = '-1') AS `o`, \
+			(f.p > UNIX_TIMESTAMP() OR f.p = '-1') AS `p`, "
+		);
+		
+		iLen += formatex(g_szTemp[iLen], iMax - iLen,
+			"(f.q > UNIX_TIMESTAMP() OR f.q = '-1') AS `q`, \
+			(f.r > UNIX_TIMESTAMP() OR f.r = '-1') AS `r`, \
+			(f.s > UNIX_TIMESTAMP() OR f.s = '-1') AS `s`, \
+			(f.t > UNIX_TIMESTAMP() OR f.t = '-1') AS `t`, \
+			(f.u > UNIX_TIMESTAMP() OR f.u = '-1') AS `u`, \
+			(f.y > UNIX_TIMESTAMP() OR f.y = '-1') AS `y`, \
+			(f.v > UNIX_TIMESTAMP() OR f.v = '-1') AS `v`, \
+			(f.w > UNIX_TIMESTAMP() OR f.w = '-1') AS `w`, \
+			(f.x > UNIX_TIMESTAMP() OR f.x = '-1') AS `x`, \
+			(f.z > UNIX_TIMESTAMP() OR f.z = '-1') AS `z` "
+		);
+		
+		iLen += formatex(g_szTemp[iLen], iMax - iLen,
+			"FROM `%splayers_flags` AS f \
+			JOIN `%sservers` AS s ON s.id = f.server \
+			WHERE s.ip = '%s' \
+			AND s.port = '%s' \
+			ORDER BY f.auth_data, f.type DESC",
+			TABLE_PREFIX, TABLE_PREFIX, g_serverIp, g_serverPort
+		);
+	
+		new data[1]; data[0] = reloadAmxbans; // Przeladuj liste adminow w amxbans
+		SQL_ThreadQuery(SqlTuple, "loadPlayersServicesHandler", g_szTemp, data, sizeof data);
+	}
+}
+
+public loadPlayersServicesHandler(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
+{
+	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
+		return;
+	}
+
+	while (SQL_MoreResults(Query))
+	{
+		new player_flags[e_PlayerFlags], type;
+		type = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "type"));
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "auth_data"), player_flags[pfPLAYER], 32);
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "password"), player_flags[pfPASSWORD], MAX_PASSWORD);
+		
+		for (new i = 0; i < strlen(all_flags); ++i) {
+			new temp[4];
+			formatex(temp, charsmax(temp), "%c", all_flags[i]);
+			if (SQL_ReadResult(Query, SQL_FieldNameToNum(Query, temp))) {
+				player_flags[pfFLAGS] |= read_flags(temp);
+			}
+		}
+		
+		switch (type) {
+			case TYPE_SID: player_flags[pfTYPE] = FLAG_AUTHID|FLAG_NOPASS;
+			case TYPE_IP: player_flags[pfTYPE] = FLAG_IP;
+			default: player_flags[pfTYPE] = FLAG_NICK|FLAG_KICK;
+		}
+		
+		// Dodanie do tablicy
+		if (player_flags[pfFLAGS] != 0) {
+			ArrayPushArray(g_playersFlags, player_flags);
+		}
+		
+		SQL_NextRow(Query);
+	}
+	
+	log_amx("Zaladowano %d uslug graczy", ArraySize(g_playersFlags));
+	g_playersLoaded = true;
+	
+	if (data[0] && g_AmxbansExists) { // Przeladuj dane w amxbans, a tym samym uruchom komende dodawania danych do tablicy globalnej uprawnien
+		server_cmd("amx_reloadadmins");
+	}
+	else {
+		_reassignPlayersFlags();
+	}
+}
+
+/**
+ * Reload players flags and assign them again
+ */
+_reassignPlayersFlags()
+{
+	addUsersToGlobalArray();
+
+	for (new i = 1; i <= get_maxplayers(); ++i) {
+		if (! is_user_connected(i)) {
+			continue;
+		}
+			
+		_assignPlayerFlags(i);
+	}
+}
+
+/**
+ * Funkcja sluzaca do dodania graczy do tablicy globalnej przechowujacej dane uprawnien graczy
+ */
+public addUsersToGlobalArray()
+{
+	if (!g_playersLoaded) { // Dane uzytkownikow nie zostaly jeszcze zaladowane
+		set_task(0.1, "addUsersToGlobalArray");
+		return;
+	}
+	
+	// Potrzebujemy drugiej tablicy, zeby elementy z amxbansa mialy takie samo id
+	new Array:users, Array:users2;
+	users = ArrayCreate(e_PlayerFlags);
+	users2 = ArrayCreate(e_PlayerFlags);
+	
+	for (new i = 0; i < ArraySize(g_playersFlags); ++i) {
+		new player_flags[e_PlayerFlags];
+		ArrayGetArray(g_playersFlags, i, player_flags);
+		ArrayPushArray(users, player_flags);
+	}
+	
+	for (new i = 0; i < admins_num(); ++i) {
+		new player_flags[e_PlayerFlags], name_bak[33];
+		
+		admins_lookup(i, AdminProp_Auth, player_flags[pfPLAYER], 32);
+		copy(name_bak, charsmax(name_bak), player_flags[pfPLAYER]);
+		strtolower(name_bak);
+		
+		admins_lookup(i, AdminProp_Password, player_flags[pfPASSWORD], MAX_PASSWORD);
+		
+		player_flags[pfTYPE] = admins_lookup(i, AdminProp_Flags);
+		player_flags[pfFLAGS] = admins_lookup(i, AdminProp_Access);
+		
+		new l = 0, p = ArraySize(users)-1, s;
+		while (l <= p) {
+			new player_flags2[e_PlayerFlags];
+			s = (l + p) / 2;
+			
+			ArrayGetArray(users, s, player_flags2);
+			strtolower(player_flags2[pfPLAYER]);
+			if (equali(name_bak, player_flags2[pfPLAYER]) && player_flags[pfTYPE] == player_flags2[pfTYPE]) {
+				// Zostawiamy haslo AMXBansa
+				player_flags[pfFLAGS] |= player_flags2[pfFLAGS];
+				ArrayPushArray(users2, player_flags);
+				ArrayDeleteItem(users, s);
+				break;
+			}
+			else if (strcmp(name_bak, player_flags2[pfPLAYER]) > 0) {
+				l = s + 1;
+			}
+			else if (equali(name_bak, player_flags2[pfPLAYER]) && _getOrderOfType(player_flags[pfTYPE]) > _getOrderOfType(player_flags2[pfTYPE])) {
+				l = s + 1;
+			}
+			else {
+				p = s - 1;
+			}
+		}
+		
+		if (p < l) {
+			ArrayPushArray(users2, player_flags);
+		}
+	}
+	admins_flush();
+	
+	for (new i = 0; i < ArraySize(users2); ++i) {
+		new player_flags[e_PlayerFlags];
+		ArrayGetArray(users2, i, player_flags);
+		admins_push(player_flags[pfPLAYER], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
+	}
+	for (new i = 0; i < ArraySize(users); ++i) {
+		new player_flags[e_PlayerFlags];
+		ArrayGetArray(users, i, player_flags);
+		admins_push(player_flags[pfPLAYER], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
+	}
+}
+
+public task_assignPlayerFlags(id)
+{
+	_assignPlayerFlags(id-TASK_ASSIGN_PLAYER_FLAGS);
+}
+
+_assignPlayerFlags(id)
+{	
+	if (! g_playersLoaded) {
+		if (! task_exists(TASK_ASSIGN_PLAYER_FLAGS+id)) {
+			set_task(0.1, "task_assignPlayerFlags", TASK_ASSIGN_PLAYER_FLAGS+id);
+		}
+			
+		return;
+	}
+	
+	for (new i = 0; i < ArraySize(g_playersFlags); ++i) {
+		new player_flags[e_PlayerFlags];
+		ArrayGetArray(g_playersFlags, i, player_flags);
+		
+		if (player_flags[pfTYPE] & FLAG_NICK) {
+			new name[MAX_NAME + 1];
+			get_user_name(id, name, charsmax(name));
+			if (! equali(name, player_flags[pfPLAYER])) {
+				continue;
+			}
+		}
+		else if (player_flags[pfTYPE] & FLAG_IP) {
+			new ip[MAX_IP + 1];
+			get_user_ip(id, ip, charsmax(ip), true);
+			if (! equali(ip, player_flags[pfPLAYER])) {
+				continue;
+			}
+		}
+		else if (player_flags[pfTYPE] & FLAG_AUTHID) {			
+			new sid[MAX_SID + 1], arr_sid[MAX_SID + 1];
+			copy(arr_sid, charsmax(arr_sid), player_flags[pfPLAYER]);
+			get_user_authid(id, sid, charsmax(sid));
+			
+			strtolower(arr_sid);
+			strtolower(sid);
+			replace(sid, charsmax(sid), "steam_", "");
+			replace(arr_sid, charsmax(arr_sid), "steam_", "");
+			
+			if (! equali(sid, arr_sid)) {
+				continue;
+			}
+		}
+		
+		if (strlen(player_flags[pfPASSWORD])) {
+			new password[MAX_PASSWORD + 1], password_md5[34];
+			
+			get_user_info(id, "_pw", password, charsmax(password));
+			vc_md5(password, password_md5);
+			
+			if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
+				get_user_info(id, "_pw2", password, charsmax(password));
+				vc_md5(password, password_md5);
+				if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
+					get_user_info(id, "_pw3", password, charsmax(password));
+					vc_md5(password, password_md5);
+					if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
+						get_user_info(id, "_ss", password, charsmax(password));
+						vc_md5(password, password_md5);
+						if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
+							if (! (player_flags[pfTYPE]&FLAG_KICK)) { // Nie kickuj gracza, tylko mu nie przydziel flag
+								continue;
+							}
+						
+							server_cmd("kick #%d ^"Nieprawidlowe haslo^"", get_user_userid(id));
+							
+							return;
+						}
+					}
+				}
+			}
+		}
+		
+		set_user_flags(id, player_flags[pfFLAGS]);
+
+		// TODO Execute forward
+	}
+}
+
+//
 // ------------------------------------------------- Shop Menu ----------------------------------------------------
+//
 
 _openShopMenu(id)
 {
@@ -990,562 +1550,8 @@ _handlePurchaseServiceResponse(id, const return_value[], const szText[], positiv
 }
 
 //
-// ------------------------------------------------- Players Flags ----------------------------------------------------
+// ----------------------------------------------- OTHER ----------------------------------------------------
 //
-
-/**
- * Funkcja wczytujaca z bazy ponownie dane graczy
- */
-public command_loadPlayersServices()
-{	
-	_loadPlayersServices(true);
-}
-
-public command_reassignPlayersFlags(id)
-{	
-	if (g_lastReassign + 10 > get_systime()) {
-		client_print_color(id, Red, "^4[%s] ^1Ktos przed chwila przeladowal liste. Odczekaj chwile.", PREFIX);
-		return;
-	}
-	
-	g_lastReassign = get_systime();
-	_reassignPlayersFlags();
-
-	if (is_user_connected(id)) {
-		client_print_color(id, Red, "^4[%s] ^1Prawidlowo przeladowano liste flag wykupionych w sklepiku.", PREFIX);
-	}
-}
-
-_loadPlayersServices(bool:reloadAmxbans) {
-	// Czyscimy dotychczasowe dane
-	ArrayClear(g_playersFlags);
-	g_playersLoaded = false;
-	
-	if (SqlTuple) {
-		new iLen = 0, iMax = charsmax(g_szTemp);
-
-		iLen += formatex(g_szTemp[iLen], iMax - iLen,
-			"SELECT f.type, f.auth_data, f.password, \
-			(f.a > UNIX_TIMESTAMP() OR f.a = '-1') AS `a`, \
-			(f.b > UNIX_TIMESTAMP() OR f.b = '-1') AS `b`, \
-			(f.c > UNIX_TIMESTAMP() OR f.c = '-1') AS `c`, \
-			(f.d > UNIX_TIMESTAMP() OR f.d = '-1') AS `d`, \
-			(f.e > UNIX_TIMESTAMP() OR f.e = '-1') AS `e`, \
-			(f.f > UNIX_TIMESTAMP() OR f.f = '-1') AS `f`, \
-			(f.g > UNIX_TIMESTAMP() OR f.g = '-1') AS `g`, \
-			(f.h > UNIX_TIMESTAMP() OR f.h = '-1') AS `h`, "
-		);
-		
-		iLen += formatex(g_szTemp[iLen], iMax - iLen,
-			"(f.i > UNIX_TIMESTAMP() OR f.i = '-1') AS `i`, \
-			(f.j > UNIX_TIMESTAMP() OR f.j = '-1') AS `j`, \
-			(f.k > UNIX_TIMESTAMP() OR f.k = '-1') AS `k`, \
-			(f.l > UNIX_TIMESTAMP() OR f.l = '-1') AS `l`, \
-			(f.m > UNIX_TIMESTAMP() OR f.m = '-1') AS `m`, \
-			(f.n > UNIX_TIMESTAMP() OR f.n = '-1') AS `n`, \
-			(f.o > UNIX_TIMESTAMP() OR f.o = '-1') AS `o`, \
-			(f.p > UNIX_TIMESTAMP() OR f.p = '-1') AS `p`, "
-		);
-		
-		iLen += formatex(g_szTemp[iLen], iMax - iLen,
-			"(f.q > UNIX_TIMESTAMP() OR f.q = '-1') AS `q`, \
-			(f.r > UNIX_TIMESTAMP() OR f.r = '-1') AS `r`, \
-			(f.s > UNIX_TIMESTAMP() OR f.s = '-1') AS `s`, \
-			(f.t > UNIX_TIMESTAMP() OR f.t = '-1') AS `t`, \
-			(f.u > UNIX_TIMESTAMP() OR f.u = '-1') AS `u`, \
-			(f.y > UNIX_TIMESTAMP() OR f.y = '-1') AS `y`, \
-			(f.v > UNIX_TIMESTAMP() OR f.v = '-1') AS `v`, \
-			(f.w > UNIX_TIMESTAMP() OR f.w = '-1') AS `w`, \
-			(f.x > UNIX_TIMESTAMP() OR f.x = '-1') AS `x`, \
-			(f.z > UNIX_TIMESTAMP() OR f.z = '-1') AS `z` "
-		);
-		
-		iLen += formatex(g_szTemp[iLen], iMax - iLen,
-			"FROM `%splayers_flags` AS f \
-			JOIN `%sservers` AS s ON s.id = f.server \
-			WHERE s.ip = '%s' \
-			AND s.port = '%s' \
-			ORDER BY f.auth_data, f.type DESC",
-			TABLE_PREFIX, TABLE_PREFIX, g_serverIp, g_serverPort
-		);
-	
-		new data[1]; data[0] = reloadAmxbans; // Przeladuj liste adminow w amxbans
-		SQL_ThreadQuery(SqlTuple, "loadPlayersServicesHandler", g_szTemp, data, sizeof data);
-	}
-}
-
-public loadPlayersServicesHandler(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
-{
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	while (SQL_MoreResults(Query))
-	{
-		new player_flags[e_PlayerFlags], type;
-		type = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "type"));
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "auth_data"), player_flags[pfPLAYER], 32);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "password"), player_flags[pfPASSWORD], MAX_PASSWORD);
-		
-		for (new i = 0; i < strlen(all_flags); ++i) {
-			new temp[4];
-			formatex(temp, charsmax(temp), "%c", all_flags[i]);
-			if (SQL_ReadResult(Query, SQL_FieldNameToNum(Query, temp))) {
-				player_flags[pfFLAGS] |= read_flags(temp);
-			}
-		}
-		
-		switch (type) {
-			case TYPE_SID: player_flags[pfTYPE] = FLAG_AUTHID|FLAG_NOPASS;
-			case TYPE_IP: player_flags[pfTYPE] = FLAG_IP;
-			default: player_flags[pfTYPE] = FLAG_NICK|FLAG_KICK;
-		}
-		
-		// Dodanie do tablicy
-		if (player_flags[pfFLAGS] != 0) {
-			ArrayPushArray(g_playersFlags, player_flags);
-		}
-		
-		SQL_NextRow(Query);
-	}
-	
-	log_amx("Zaladowano %d uslug graczy", ArraySize(g_playersFlags));
-	g_playersLoaded = true;
-	
-	if (data[0] && g_AmxbansExists) { // Przeladuj dane w amxbans, a tym samym uruchom komende dodawania danych do tablicy globalnej uprawnien
-		server_cmd("amx_reloadadmins");
-	}
-	else {
-		_reassignPlayersFlags();
-	}
-}
-
-/**
- * Reload players flags and assign them again
- */
-_reassignPlayersFlags()
-{
-	addUsersToGlobalArray();
-
-	for (new i = 1; i <= get_maxplayers(); ++i) {
-		if (! is_user_connected(i)) {
-			continue;
-		}
-			
-		_assignPlayerFlags(i);
-	}
-}
-
-/**
- * Funkcja sluzaca do dodania graczy do tablicy globalnej przechowujacej dane uprawnien graczy
- */
-public addUsersToGlobalArray()
-{
-	if (!g_playersLoaded) { // Dane uzytkownikow nie zostaly jeszcze zaladowane
-		set_task(0.1, "addUsersToGlobalArray");
-		return;
-	}
-	
-	// Potrzebujemy drugiej tablicy, zeby elementy z amxbansa mialy takie samo id
-	new Array:users, Array:users2;
-	users = ArrayCreate(e_PlayerFlags);
-	users2 = ArrayCreate(e_PlayerFlags);
-	
-	for (new i = 0; i < ArraySize(g_playersFlags); ++i) {
-		new player_flags[e_PlayerFlags];
-		ArrayGetArray(g_playersFlags, i, player_flags);
-		ArrayPushArray(users, player_flags);
-	}
-	
-	for (new i = 0; i < admins_num(); ++i) {
-		new player_flags[e_PlayerFlags], name_bak[33];
-		
-		admins_lookup(i, AdminProp_Auth, player_flags[pfPLAYER], 32);
-		copy(name_bak, charsmax(name_bak), player_flags[pfPLAYER]);
-		strtolower(name_bak);
-		
-		admins_lookup(i, AdminProp_Password, player_flags[pfPASSWORD], MAX_PASSWORD);
-		
-		player_flags[pfTYPE] = admins_lookup(i, AdminProp_Flags);
-		player_flags[pfFLAGS] = admins_lookup(i, AdminProp_Access);
-		
-		new l = 0, p = ArraySize(users)-1, s;
-		while (l <= p) {
-			new player_flags2[e_PlayerFlags];
-			s = (l + p) / 2;
-			
-			ArrayGetArray(users, s, player_flags2);
-			strtolower(player_flags2[pfPLAYER]);
-			if (equali(name_bak, player_flags2[pfPLAYER]) && player_flags[pfTYPE] == player_flags2[pfTYPE]) {
-				// Zostawiamy haslo AMXBansa
-				player_flags[pfFLAGS] |= player_flags2[pfFLAGS];
-				ArrayPushArray(users2, player_flags);
-				ArrayDeleteItem(users, s);
-				break;
-			}
-			else if (strcmp(name_bak, player_flags2[pfPLAYER]) > 0) {
-				l = s + 1;
-			}
-			else if (equali(name_bak, player_flags2[pfPLAYER]) && _getOrderOfType(player_flags[pfTYPE]) > _getOrderOfType(player_flags2[pfTYPE])) {
-				l = s + 1;
-			}
-			else {
-				p = s - 1;
-			}
-		}
-		
-		if (p < l) {
-			ArrayPushArray(users2, player_flags);
-		}
-	}
-	admins_flush();
-	
-	for (new i = 0; i < ArraySize(users2); ++i) {
-		new player_flags[e_PlayerFlags];
-		ArrayGetArray(users2, i, player_flags);
-		admins_push(player_flags[pfPLAYER], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
-	}
-	for (new i = 0; i < ArraySize(users); ++i) {
-		new player_flags[e_PlayerFlags];
-		ArrayGetArray(users, i, player_flags);
-		admins_push(player_flags[pfPLAYER], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
-	}
-}
-
-public task_assignPlayerFlags(id)
-{
-	_assignPlayerFlags(id-TASK_ASSIGN_PLAYER_FLAGS);
-}
-
-_assignPlayerFlags(id)
-{	
-	if (! g_playersLoaded) {
-		if (! task_exists(TASK_ASSIGN_PLAYER_FLAGS+id)) {
-			set_task(0.1, "task_assignPlayerFlags", TASK_ASSIGN_PLAYER_FLAGS+id);
-		}
-			
-		return;
-	}
-	
-	for (new i = 0; i < ArraySize(g_playersFlags); ++i) {
-		new player_flags[e_PlayerFlags];
-		ArrayGetArray(g_playersFlags, i, player_flags);
-		
-		if (player_flags[pfTYPE] & FLAG_NICK) {
-			new name[MAX_NAME + 1];
-			get_user_name(id, name, charsmax(name));
-			if (! equali(name, player_flags[pfPLAYER])) {
-				continue;
-			}
-		}
-		else if (player_flags[pfTYPE] & FLAG_IP) {
-			new ip[MAX_IP + 1];
-			get_user_ip(id, ip, charsmax(ip), true);
-			if (! equali(ip, player_flags[pfPLAYER])) {
-				continue;
-			}
-		}
-		else if (player_flags[pfTYPE] & FLAG_AUTHID) {			
-			new sid[MAX_SID + 1], arr_sid[MAX_SID + 1];
-			copy(arr_sid, charsmax(arr_sid), player_flags[pfPLAYER]);
-			get_user_authid(id, sid, charsmax(sid));
-			
-			strtolower(arr_sid);
-			strtolower(sid);
-			replace(sid, charsmax(sid), "steam_", "");
-			replace(arr_sid, charsmax(arr_sid), "steam_", "");
-			
-			if (! equali(sid, arr_sid)) {
-				continue;
-			}
-		}
-		
-		if (strlen(player_flags[pfPASSWORD])) {
-			new password[MAX_PASSWORD + 1], password_md5[34];
-			
-			get_user_info(id, "_pw", password, charsmax(password));
-			vc_md5(password, password_md5);
-			
-			if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
-				get_user_info(id, "_pw2", password, charsmax(password));
-				vc_md5(password, password_md5);
-				if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
-					get_user_info(id, "_pw3", password, charsmax(password));
-					vc_md5(password, password_md5);
-					if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
-						get_user_info(id, "_ss", password, charsmax(password));
-						vc_md5(password, password_md5);
-						if (! equal(password_md5, player_flags[pfPASSWORD]) && !equal(password, player_flags[pfPASSWORD])) {
-							if (! (player_flags[pfTYPE]&FLAG_KICK)) { // Nie kickuj gracza, tylko mu nie przydziel flag
-								continue;
-							}
-						
-							server_cmd("kick #%d ^"Nieprawidlowe haslo^"", get_user_userid(id));
-							
-							return;
-						}
-					}
-				}
-			}
-		}
-		
-		set_user_flags(id, player_flags[pfFLAGS]);
-
-		// TODO Execute forward
-	}
-}
-
-//
-// ------------------------------------------------- Server Configuration ----------------------------------------------------
-//
-
-_loadSettings()
-{
-	formatex(g_szTemp, charsmax(g_szTemp),
-		"SELECT * FROM `%ssettings` \
-		WHERE `key` IN ('shop_url', 'random_key')",
-		TABLE_PREFIX
-	);
-	SQL_ThreadQuery(SqlTuple, "loadSettingsHandler", g_szTemp);
-}
-
-public loadSettingsHandler(FailState, Handle:Query, Error[], Errorcode)
-{	
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	while (SQL_MoreResults(Query)) {
-		new key[128], value[256];
-		
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "key"), key, charsmax(key));
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "value"), value, charsmax(value));
-
-		if (equali(key, "shop_url")) {
-			copy(g_shopPageUrl, charsmax(g_shopPageUrl), value);
-			
-			// Remove trailing slash
-			if (strlen(g_shopPageUrl) && g_shopPageUrl[strlen(g_shopPageUrl) - 1] == '/') {
-				g_shopPageUrl[strlen(g_shopPageUrl) - 1] = '^0';
-			}
-			
-			if (! strlen(g_shopPageUrl)) {
-				_errorNoShopUrl();
-				return;
-			}
-		}
-		else if (equali(key, "random_key")) {
-			copy(g_randomKey, charsmax(g_randomKey), value);
-			vc_md5(g_randomKey, g_randomKeyMD5); // Hashujemy random key
-		}
-		
-		SQL_NextRow(Query);
-	}
-	
-	_loadServerConfig();
-}
-
-_loadServerConfig()
-{
-	new url[MAX_URL + 1];
-	formatex(url, charsmax(url), "%s/api/server/config?key=%s&ip=%s&port=%s&version=%s", g_shopPageUrl, g_randomKeyMD5, g_serverIp, g_serverPort, VERSION);
-
-	if (!makeRequest("GET", url, 0, "", "onLoadServerConfigResponse")) {
-		_errorConfigFailed(999);
-	}
-}
-
-public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, playerId)
-{
-	if (code != CURLE_OK) {
-		_errorConfigFailed(code);
-		return;
-	}
-
-	if (statusCode == 404) {
-		_errorNoServer();
-		return;
-	}
-
-	if (statusCode == 402) {
-		_errorOutdatedVersion();
-		return;
-	}
-
-	if (statusCode >= 300) {
-		_errorConfigInvalidResponse(statusCode);
-		return;
-	}
-
-	new szServices[512];
-
-	extractFieldValue(content, "id", g_szTemp, charsmax(g_szTemp));
-	g_serverId = str_to_num(g_szTemp);
-	extractFieldValue(content, "sms_platform_id", g_szTemp, charsmax(g_szTemp));
-	g_smsPlatformId = str_to_num(g_szTemp);
-	extractFieldValue(content, "sms_module_id", g_smsModuleId, charsmax(g_smsModuleId));
-	extractFieldValue(content, "sms_text", g_smsText, charsmax(g_smsText));
-	extractFieldValue(content, "services", szServices, charsmax(szServices));
-	extractFieldValue(content, "steam_ids", g_accountsSteamIds, charsmax(g_accountsSteamIds));
-	extractFieldValue(content, "currency", g_currency, charsmax(g_currency));
-	extractFieldValue(content, "contact", g_contact, charsmax(g_contact));
-	extractFieldValue(content, "vat", g_szTemp, charsmax(g_szTemp));
-	g_vat = str_to_float(g_szTemp);
-	extractFieldValue(content, "license_token", g_licenseToken, charsmax(g_licenseToken));
-
-	_validateLicense();
-	_getServices(szServices);
-	_getSmsNumbers();
-}
-
-_getServices(const services[])
-{
-	// Sprawdzanie dostepnosci usług
-	new service_id[MAX_SERVICE_ID + 1], service_id_space[MAX_SERVICE_ID + 2 + 1], ids[512], ids_len = 0, ids_max = charsmax(ids);
-	for (new i = 0; i < ArraySize(service_ids); ++i) {
-		ArrayGetString(service_ids, i, service_id, charsmax(service_id));
-		formatex(service_id_space, charsmax(service_id_space), " %s ", service_id);
-		
-		if (containi(services, service_id_space) != -1) {
-			if (ids_len) {
-				ids_len += formatex(ids[ids_len], ids_max-ids_len, ",");
-			}
-				
-			ids_len += formatex(ids[ids_len], ids_max-ids_len, "'%s'", service_id);
-		}
-		else { // Usługa nieaktywna, lub brak usługi
-			// Zatrzymaj plugin uslugi
-			new plugin_name[64];
-			get_plugin(ArrayGetCell(service_plugins, i), plugin_name, charsmax(plugin_name));
-			pause("acd", plugin_name);
-			ArrayDeleteItem(service_ids, i);
-			ArrayDeleteItem(service_plugins, i);
-			i -= 1;
-		}
-	}
-	
-	// Jest chociaz jedna usluga, wiec pobieramy dane o uslugach
-	if (ids_len) {
-		if (SqlTuple) {
-			formatex(g_szTemp, charsmax(g_szTemp),
-				"SELECT * FROM `%sservices` \
-				WHERE `id` IN(%s) \
-				ORDER BY `order` ASC",
-				TABLE_PREFIX, ids
-			);
-		
-			SQL_ThreadQuery(SqlTuple, "getServicesHandler", g_szTemp);
-		}
-	} else {
-		_checkLoadedServices();
-	}
-}
-
-public getServicesHandler(FailState, Handle:Query, Error[], Errorcode) {
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	new service[e_Service];
-	new ids[512], ids_len = 0, ids_max = charsmax(ids);
-	while (SQL_MoreResults(Query))
-	{
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "id"), service[sID], MAX_SERVICE_ID);
-		service[PLUGIN] = _getServicePluginByID(service[sID]);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "name"), service[sNAME], MAX_SERVICE_NAME);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "short_description"), service[DESCRIPTION], MAX_DESCRIPTION);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tag"), service[TAG], MAX_SERVICE_TAG);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "flags"), service[FLAGS], 26);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "groups"), service[GROUPS], 32);
-		service[TYPES] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "types"));
-		
-		ArrayPushArray(services, service);
-			
-		// Wyslanie danych uslugi do pluginu
-		new ret, forward_handle;
-		forward_handle = CreateOneForward(service[PLUGIN], "ss_service_data", FP_STRING, FP_STRING);
-		ExecuteForward(forward_handle, ret, service[sNAME], service[FLAGS]);
-		DestroyForward(forward_handle);
-		
-		// Przygotowywanie zapytania o priceliste
-		if (ids_len) {
-			ids_len += formatex(ids[ids_len], ids_max-ids_len, ",");
-		}
-		
-		ids_len += formatex(ids[ids_len], ids_max-ids_len, "'%s'", service[sID]);
-		
-		SQL_NextRow(Query);
-	}
-	
-	_checkLoadedServices();
-	
-	// Jest chociaz jedna usluga
-	if (ids_len) {
-		if (SqlTuple) {
-			formatex(g_szTemp, charsmax(g_szTemp), 
-				"SELECT * FROM `%spricelist` \
-				WHERE (`server`='%d' OR `server`='-1') AND `service` IN (%s) \
-				ORDER BY `amount` ASC", 
-				TABLE_PREFIX, g_serverId, ids
-			);
-			SQL_ThreadQuery(SqlTuple, "getPriceListHandler", g_szTemp);
-		}
-	}
-}
-
-public getPriceListHandler(FailState, Handle:Query, Error[], Errorcode)
-{		
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	while (SQL_MoreResults(Query))
-	{
-		new price[e_Price];
-		
-		price[pTARIFF] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tariff"));
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "service"), price[pSERVICE], MAX_SERVICE_ID);
-		price[AMOUNT] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "amount"));
-		
-		ArrayPushArray(pricelist, price);
-		
-		SQL_NextRow(Query);
-	}
-}
-
-_getSmsNumbers()
-{
-	if (SqlTuple) {
-		new payment_module_id[MAX_PAYMENT_MODULE_ID + 1];
-		formatex(payment_module_id, charsmax(payment_module_id), "%s", g_smsModuleId);
-		escapeQuotes(payment_module_id, charsmax(payment_module_id));
-		
-		formatex(g_szTemp, charsmax(g_szTemp),
-			"SELECT `number`, `tariff` \
-			FROM `%ssms_numbers` \
-			WHERE `service` = '%s'",
-			TABLE_PREFIX, payment_module_id
-		);
-		SQL_ThreadQuery(SqlTuple, "getSmsNumbersHandler", g_szTemp);
-	}
-}
-
-public getSmsNumbersHandler(FailState, Handle:Query, Error[], Errorcode)
-{	
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	new sms[e_SMS];
-	while (SQL_MoreResults(Query))
-	{
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "number"), sms[NUMBER], MAX_NUMBER);
-		sms[sTARIFF] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tariff"));
-		ArrayPushArray(smses, sms);
-		
-		SQL_NextRow(Query);
-	}
-}
 
 /**
  * Wyswietlenie obecnych uslug gracza
