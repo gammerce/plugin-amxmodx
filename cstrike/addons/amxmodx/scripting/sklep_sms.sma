@@ -16,7 +16,7 @@ forward amxx_admin_access(id, flags, timestamp);
 
 // ID zadan
 #define TASK_KEEP_INFO_SMS 2000
-#define TASK_CHECK_USER 5000
+#define TASK_ASSIGN_PLAYER_FLAGS 5000
 #define TASK_KEEP_DISPLAYING_MENU 8000
 
 // Klawisze ktore mozna uzyc w menu
@@ -237,8 +237,8 @@ public plugin_init()
 	register_concmd("Podaj_Kod_Zwrotny", "onSmsCodeEntered");
 	register_concmd("ssnick_Podaj_Haslo", "onNickPasswordEntered");
 	register_concmd("ssip_Podaj_Haslo", "onIpPasswordEntered");
-	register_concmd("sklepsms_reloaddata", "realoadPlayersServices");
-	register_concmd("sklepsms_reloadusers", "pre_reassignPlayersFlags");
+	register_concmd("sklepsms_reloaddata", "command_loadPlayersServices");
+	register_concmd("sklepsms_reloadusers", "command_reassignPlayersFlags");
 	
 	register_clcmd("say", "sayHook");
 	register_clcmd("say_team", "sayHook");
@@ -305,12 +305,28 @@ _loadCvars()
 
 public client_authorized(id)
 {	
-	_usersCheckUser(id);
+	_assignPlayerFlags(id);
 }
 
 public client_putinserver(id)
 {	
-	_usersCheckUser(id);
+	_assignPlayerFlags(id);
+}
+
+public amxbans_sql_initialized()
+{	
+	g_AmxbansExists = true;
+	_reassignPlayersFlags();
+}
+
+public client_admin(id, flags)
+{
+    _assignPlayerFlags(id);
+}
+
+public amxx_admin_access(id, flags, timestamp)
+{
+    _assignPlayerFlags(id);
 }
 
 public sayHook(id)
@@ -322,7 +338,7 @@ public sayHook(id)
 		_openShopMenu(id);
 	}
 	else if (equali(tekst, przeladuj_komenda)) {
-		pre_reassignPlayersFlags(id);
+		command_reassignPlayersFlags(id);
 	}
 	else if (equali(tekst, uslugi_komenda)) {
 		_showPlayerServices(id);
@@ -969,90 +985,23 @@ _handlePurchaseServiceResponse(id, const return_value[], const szText[], positiv
 	// Jezeli usluga ma flagi do ustawienia to wczytujemy ponownie dane z bazy
 	if (service[FLAGS]) {
 		// Musimy przeladowac z opoznieniem, aby dane uzytkownika zalapaly nowe haslo
-		set_task(2.0, "realoadPlayersServices");
+		set_task(2.0, "command_loadPlayersServices");
 	}
 }
 
-// Wyswietlenie obecnych uslug gracza
-
-_showPlayerServices(id)
-{
-	if (!is_user_connected(id)) {
-		return;
-	}
-		
-	new name[MAX_NAME * 2 + 1], sid[MAX_SID * 2 + 1], ip[MAX_IP + 1];
-	get_user_name(id, name, charsmax(name));
-	get_user_ip(id, ip, charsmax(ip), true);
-	get_user_authid(id, sid, charsmax(sid));
-	
-	escapeQuotes(name, charsmax(name));
-	escapeQuotes(ip, charsmax(ip));
-	escapeQuotes(sid, charsmax(sid));
-
-	if (SqlTuple) {
-		new data[1]; data[0] = id;
-		formatex(g_szTemp, charsmax(g_szTemp),
-			"SELECT s.name AS `service`, FROM_UNIXTIME(us.expire) AS `expire`, us.expire AS `expire_num` FROM `%suser_service` AS us \
-			INNER JOIN `%suser_service_extra_flags` AS usef ON usef.us_id = us.id \
-			INNER JOIN `%sservices` AS s ON us.service = s.id \
-			WHERE usef.server = '%d' \
-			AND ((usef.type = '%d' AND usef.auth_data = '%s') \
-			OR (usef.type = '%d' AND usef.auth_data = '%s') \
-			OR (usef.type = '%d' AND usef.auth_data = '%s'))",
-			TABLE_PREFIX, TABLE_PREFIX, TABLE_PREFIX, g_serverId, TYPE_NICK, name, TYPE_IP, ip, TYPE_SID, sid
-		);
-	
-		SQL_ThreadQuery(SqlTuple, "getPlayerServicesHandler", g_szTemp, data, sizeof data);
-	}
-}
-
-public getPlayerServicesHandler(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
-{
-	new id = data[0];
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		client_print_color(id, Red, "^4[%s] ^1Niestety, nie udalo sie pozyskac informacji o Twoich uslugach.", PREFIX);
-		return;
-	}
-
-	new menu = menu_create("Twoje obecne uslugi", "showPlayerServices_handler");
-
-	while (SQL_MoreResults(Query)) {
-		new service[MAX_SERVICE_ID + 1], expire[32 + 1], item_text[128];
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "service"), service, charsmax(service));
-		
-		if (SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "expire_num")) == -1) {
-			copy(expire, charsmax(expire), "Nigdy");
-		} else {
-			SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "expire"), expire, charsmax(expire));
-		}
-		
-		formatex(item_text, charsmax(item_text), "%s - wygasa: %s", service, expire);
-		menu_additem(menu, item_text);
-		
-		SQL_NextRow(Query);
-	}
-	
-	if (menu_items(menu)) {
-		menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
-		menu_display(id, menu);
-	}
-	else {
-		client_print_color(id, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s.", PREFIX, sklep_komenda);
-	}
-}
-
-public showPlayerServices_handler(id, menu, item)
-{	
-	menu_destroy(menu);
-}
+//
+// ------------------------------------------------- Players Flags ----------------------------------------------------
+//
 
 /**
- * Wrapper for _reassignPlayersFlags
- *
- * @param int	id
+ * Funkcja wczytujaca z bazy ponownie dane graczy
  */
-public pre_reassignPlayersFlags(id)
+public command_loadPlayersServices()
+{	
+	_loadPlayersServices(true);
+}
+
+public command_reassignPlayersFlags(id)
 {	
 	if (g_lastReassign + 10 > get_systime()) {
 		client_print_color(id, Red, "^4[%s] ^1Ktos przed chwila przeladowal liste. Odczekaj chwile.", PREFIX);
@@ -1060,34 +1009,11 @@ public pre_reassignPlayersFlags(id)
 	}
 	
 	g_lastReassign = get_systime();
-	_reassignPlayersFlags(id);
-}
+	_reassignPlayersFlags();
 
-/**
- * Reload players flags and assign them again
- *
- * @param int	id
- */
-_reassignPlayersFlags(id = 0)
-{
-	addUsersToGlobalArray();
-
-	for (new i = 1; i <= get_maxplayers(); ++i) {
-		if (! is_user_connected(i)) {
-			continue;
-		}
-			
-		_usersCheckUser(i);
-	}
-	
 	if (is_user_connected(id)) {
 		client_print_color(id, Red, "^4[%s] ^1Prawidlowo przeladowano liste flag wykupionych w sklepiku.", PREFIX);
 	}
-}
-
-// Funkcja wczytujaca z bazy ponownie dane graczy
-public realoadPlayersServices() {	
-	_loadPlayersServices(true);
 }
 
 _loadPlayersServices(bool:reloadAmxbans) {
@@ -1144,11 +1070,11 @@ _loadPlayersServices(bool:reloadAmxbans) {
 		);
 	
 		new data[1]; data[0] = reloadAmxbans; // Przeladuj liste adminow w amxbans
-		SQL_ThreadQuery(SqlTuple, "getPlayersData", g_szTemp, data, sizeof data);
+		SQL_ThreadQuery(SqlTuple, "loadPlayersServicesHandler", g_szTemp, data, sizeof data);
 	}
 }
 
-public getPlayersData(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
+public loadPlayersServicesHandler(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
 {
 	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
 		return;
@@ -1194,23 +1120,25 @@ public getPlayersData(FailState, Handle:Query, Error[], Errorcode, data[], data_
 	}
 }
 
-public amxbans_sql_initialized()
-{	
-	g_AmxbansExists = true;
-	_reassignPlayersFlags();
-}
-
-public client_admin(id, flags)
+/**
+ * Reload players flags and assign them again
+ */
+_reassignPlayersFlags()
 {
-    _usersCheckUser(id);
+	addUsersToGlobalArray();
+
+	for (new i = 1; i <= get_maxplayers(); ++i) {
+		if (! is_user_connected(i)) {
+			continue;
+		}
+			
+		_assignPlayerFlags(i);
+	}
 }
 
-public amxx_admin_access(id, flags, timestamp)
-{
-    _usersCheckUser(id);
-}
-
-// Funkcja sluzaca do dodania graczy do tablicy globalnej przechowujacej dane uprawnien graczy
+/**
+ * Funkcja sluzaca do dodania graczy do tablicy globalnej przechowujacej dane uprawnien graczy
+ */
 public addUsersToGlobalArray()
 {
 	if (!g_playersLoaded) { // Dane uzytkownikow nie zostaly jeszcze zaladowane
@@ -1284,27 +1212,16 @@ public addUsersToGlobalArray()
 	}
 }
 
-_getOrderOfType(type)
-{	
-	switch (type) {
-		case FLAG_IP: return 1;
-		case FLAG_NICK : return 2;
-		case FLAG_AUTHID: return 3;
-	}
-	
-	return 0;
-}
-
-public usersCheckUser_task(id)
+public task_assignPlayerFlags(id)
 {
-	_usersCheckUser(id-TASK_CHECK_USER);
+	_assignPlayerFlags(id-TASK_ASSIGN_PLAYER_FLAGS);
 }
 
-public _usersCheckUser(id)
+_assignPlayerFlags(id)
 {	
 	if (! g_playersLoaded) {
-		if (! task_exists(TASK_CHECK_USER+id)) {
-			set_task(0.1, "usersCheckUser_task", TASK_CHECK_USER+id);
+		if (! task_exists(TASK_ASSIGN_PLAYER_FLAGS+id)) {
+			set_task(0.1, "task_assignPlayerFlags", TASK_ASSIGN_PLAYER_FLAGS+id);
 		}
 			
 		return;
@@ -1373,8 +1290,14 @@ public _usersCheckUser(id)
 		}
 		
 		set_user_flags(id, player_flags[pfFLAGS]);
+
+		// TODO Execute forward
 	}
 }
+
+//
+// ------------------------------------------------- Server Configuration ----------------------------------------------------
+//
 
 _loadSettings()
 {
@@ -1625,6 +1548,81 @@ public getSmsNumbersHandler(FailState, Handle:Query, Error[], Errorcode)
 }
 
 /**
+ * Wyswietlenie obecnych uslug gracza
+ */
+_showPlayerServices(id)
+{
+	if (!is_user_connected(id)) {
+		return;
+	}
+		
+	new name[MAX_NAME * 2 + 1], sid[MAX_SID * 2 + 1], ip[MAX_IP + 1];
+	get_user_name(id, name, charsmax(name));
+	get_user_ip(id, ip, charsmax(ip), true);
+	get_user_authid(id, sid, charsmax(sid));
+	
+	escapeQuotes(name, charsmax(name));
+	escapeQuotes(ip, charsmax(ip));
+	escapeQuotes(sid, charsmax(sid));
+
+	if (SqlTuple) {
+		new data[1]; data[0] = id;
+		formatex(g_szTemp, charsmax(g_szTemp),
+			"SELECT s.name AS `service`, FROM_UNIXTIME(us.expire) AS `expire`, us.expire AS `expire_num` FROM `%suser_service` AS us \
+			INNER JOIN `%suser_service_extra_flags` AS usef ON usef.us_id = us.id \
+			INNER JOIN `%sservices` AS s ON us.service = s.id \
+			WHERE usef.server = '%d' \
+			AND ((usef.type = '%d' AND usef.auth_data = '%s') \
+			OR (usef.type = '%d' AND usef.auth_data = '%s') \
+			OR (usef.type = '%d' AND usef.auth_data = '%s'))",
+			TABLE_PREFIX, TABLE_PREFIX, TABLE_PREFIX, g_serverId, TYPE_NICK, name, TYPE_IP, ip, TYPE_SID, sid
+		);
+	
+		SQL_ThreadQuery(SqlTuple, "showPlayerServicesHandler", g_szTemp, data, sizeof data);
+	}
+}
+
+public showPlayerServicesHandler(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
+{
+	new id = data[0];
+	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
+		client_print_color(id, Red, "^4[%s] ^1Niestety, nie udalo sie pozyskac informacji o Twoich uslugach.", PREFIX);
+		return;
+	}
+
+	new menu = menu_create("Twoje obecne uslugi", "showPlayerServices_handler");
+
+	while (SQL_MoreResults(Query)) {
+		new service[MAX_SERVICE_ID + 1], expire[32 + 1], item_text[128];
+		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "service"), service, charsmax(service));
+		
+		if (SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "expire_num")) == -1) {
+			copy(expire, charsmax(expire), "Nigdy");
+		} else {
+			SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "expire"), expire, charsmax(expire));
+		}
+		
+		formatex(item_text, charsmax(item_text), "%s - wygasa: %s", service, expire);
+		menu_additem(menu, item_text);
+		
+		SQL_NextRow(Query);
+	}
+	
+	if (menu_items(menu)) {
+		menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
+		menu_display(id, menu);
+	}
+	else {
+		client_print_color(id, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s.", PREFIX, sklep_komenda);
+	}
+}
+
+public showPlayerServices_handler(id, menu, item)
+{	
+	menu_destroy(menu);
+}
+
+/**
  * Dodanie kodu do bazy kodow
  *
  * @param const char[]	sms_code
@@ -1841,6 +1839,15 @@ public keepDisplayingMenu(data[])
 	set_task(0.1, "keepDisplayingMenu", TASK_KEEP_DISPLAYING_MENU + id, data, 2);
 }
 
+_checkLoadedServices()
+{	
+	if (!ArraySize(services)) {
+		log_amx("Nie zaladowano zadnych uslug do zakupienia.");
+	} else {
+		log_amx("Zaladowano %d uslug do zakupienia.", ArraySize(services));
+	}
+}
+
 _invalidPath(id, const path[])
 {	
 	_log(0, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
@@ -1888,13 +1895,15 @@ _getNumberByTariff(tariff, output[], len)
 	}
 }
 
-_checkLoadedServices()
+_getOrderOfType(type)
 {	
-	if (!ArraySize(services)) {
-		log_amx("Nie zaladowano zadnych uslug do zakupienia.");
-	} else {
-		log_amx("Zaladowano %d uslug do zakupienia.", ArraySize(services));
+	switch (type) {
+		case FLAG_IP: return 1;
+		case FLAG_NICK : return 2;
+		case FLAG_AUTHID: return 3;
 	}
+	
+	return 0;
 }
 
 _canUseShop()
