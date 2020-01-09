@@ -32,6 +32,14 @@ const MAX_CONTACT = 64;
 const MAX_RANDOM_KEY = 32;
 const MAX_PAYMENT_MODULE_ID = 32;
 
+
+// FORWARDs
+new forwrdClientAccess;
+
+// CVARs
+new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_host, cvar_user, cvar_pass, cvar_db, cvar_server_ip, cvar_silent_command;
+new sklep_komenda[MAX_COMMAND + 1], przeladuj_komenda[MAX_COMMAND + 1], uslugi_komenda[MAX_COMMAND + 1], show_info;
+
 enum e_KeyValue {
 	kvKEY[128],
 	kvVALUE[128]
@@ -73,10 +81,6 @@ new which_service[33],
 	which_price[33], 
 	b_passwords[33][MAX_PASSWORD + 1], 
 	b_types[33];
-
-// CVARy
-new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_host, cvar_user, cvar_pass, cvar_db, cvar_server_ip, cvar_silent_command;
-new sklep_komenda[MAX_COMMAND + 1], przeladuj_komenda[MAX_COMMAND + 1], uslugi_komenda[MAX_COMMAND + 1], show_info;
 
 // Sciezka do pliku konfiguracyjnego
 new config_path[128];
@@ -151,6 +155,8 @@ public plugin_natives()
 	register_native("ss_add_code", "native_addSmsCode");
 	register_native("ss_log", "native_addLog");
 	register_native("ss_is_steam", "native_is_steam");
+
+	forwrdClientAccess = CreateMultiForward("ss_client_access", ET_IGNORE, FP_CELL, FP_CELL);
 }
 
 public plugin_precache()

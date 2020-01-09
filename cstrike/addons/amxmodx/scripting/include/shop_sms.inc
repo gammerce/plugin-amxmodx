@@ -46,7 +46,7 @@ native bool:ss_is_steam(id);
 /*------------------------------
  * Sprawdza, czy gracz ma steama
  * ---------------------------
- * id - index gracza dokonujacego zakupu
+ * id - index gracza 
 ------------------------------*/
 
 forward ss_service_data(name[], flags[]);
@@ -74,7 +74,7 @@ forward ss_service_chosen(id, amount);
 /*------------------------------
  * Forward wysylany ( do pluginu z ktorego zostala zarejstrowana usluga )
  * w momencie wybrania uslugi.
- * Funkcja powinna zwracaæ jedna z dwoch wartosci:
+ * Funkcja powinna zwracac jedna z dwoch wartosci:
  *  SS_OK
  *  SS_STOP - gdy chcemy na pewien czas zatrzymaæ proces wykupowania us³ugi.
  *		Potem musimy go wznowiæ za pomoca natywu ss_show_sms_info.
@@ -92,8 +92,17 @@ forward ss_service_bought(id, amount);
  * amount - ilosc wykupionej uslugi
 ------------------------------*/
 
+forward ss_client_access(id, flags);
+/*------------------------------
+ * Forward wysylany do wszystkich pluginow w momencie przypisania uzytkownikowi flag.
+ * Zwracana wartosc jest ignorowana.
+ * ---------------------------
+ * id - index gracza
+ * flags - flagi, ktore zostaly ustawione uzytkownikowi 
+------------------------------*/
+
 stock pause_plugin() {
 	static szFile[32];
 	get_plugin(-1, szFile, sizeof szFile);
-	pause("ad",szFile);
+	pause("ad", szFile);
 }
