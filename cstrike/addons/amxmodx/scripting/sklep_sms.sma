@@ -1398,20 +1398,20 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 	trim(szText);
 	trim(szWarnings);
 
-	if (!strlen(return_value)) {
+	if (!strlen(szText)) {
 		log_amx("Invalid response: %s", content);
 	}
 
 	_handlePurchaseServiceResponse(playerId, return_value, szText, str_to_num(szPositive), str_to_num(szBsid), szWarnings);
 }
 
-_handlePurchaseServiceResponse(id, const return_value[], const szText[], positive, bsid, const szWarnings[])
+_handlePurchaseServiceResponse(id, const return_value[], const message[], positive, bsid, const szWarnings[])
 {
 	if (! is_user_connected(id)) {
 		return;
 	}
 	
-	client_print_color(id, Red, "^4[%s] ^1%s", PREFIX, strlen(szText) ? szText : "Wystapil blad. Brak odpowiedzi z serwera.");	
+	client_print_color(id, Red, "^4[%s] ^1%s", PREFIX, strlen(message) ? message : "Wystapil blad. Brak odpowiedzi z serwera.");
 	
 	if (strlen(szWarnings)) {
 		format(g_szTemp, charsmax(g_szTemp), 
