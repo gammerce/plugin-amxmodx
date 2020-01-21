@@ -276,12 +276,12 @@ public amxbans_sql_initialized()
 
 public client_admin(id, flags)
 {
-    _assignPlayerFlags(id);
+	_assignPlayerFlags(id);
 }
 
 public amxx_admin_access(id, flags, timestamp)
 {
-    _assignPlayerFlags(id);
+	_assignPlayerFlags(id);
 }
 
 public sayHook(id)
@@ -357,7 +357,7 @@ _loadServerConfig()
 	new url[MAX_URL + 1];
 	formatex(url, charsmax(url), "%s/api/server/config?key=%s&ip=%s&port=%s&version=%s", g_shopPageUrl, g_randomKeyMD5, g_serverIp, g_serverPort, VERSION);
 
-	if (!makeRequest("GET", url, 0, "", "onLoadServerConfigResponse")) {
+	if (!makeRequest("GET", url, curl_slist:0, "", "onLoadServerConfigResponse")) {
 		_errorConfigFailed(999);
 	}
 }
@@ -365,7 +365,7 @@ _loadServerConfig()
 public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, playerId)
 {
 	if (code != CURLE_OK) {
-		_errorConfigFailed(code);
+		_errorConfigFailed(_:code);
 		return;
 	}
 
@@ -1316,7 +1316,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		new u_service_id[MAX_SERVICE_ID * 2 + 1], u_auth_data[64 + 1], u_steam_id[64 + 1],
 			u_password[MAX_PASSWORD * 2 + 1], u_sms_code[MAX_CODE * 2 + 1];
 		
-		new sign[34], sign_body[1 + charsmax(auth_data) + charsmax(sms_code) + charsmax(g_randomKey) + 1];
+		new sign[34], sign_body[1 + charsmax(auth_data) + MAX_CODE + charsmax(g_randomKey) + 1];
 		new header[MAX_HEADERS + 1];
 
 		// Pobieramy dane o usludze
@@ -1386,15 +1386,12 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 		return;
 	}
 	
-	new return_value[33], szText[128], szPositive[3], szBsid[16], szWarnings[256];
+	new szText[128], szPositive[3], szWarnings[256];
 
-	getXMLValue(content, "return_value", return_value, charsmax(return_value));
 	getXMLValue(content, "text", szText, charsmax(szText));
 	getXMLValue(content, "positive", szPositive, charsmax(szPositive));
-	getXMLValue(content, "bsid", szBsid, charsmax(szBsid));
 	getXMLValue(content, "warnings", szWarnings, charsmax(szWarnings));
 	
-	trim(return_value);
 	trim(szText);
 	trim(szWarnings);
 
@@ -1402,10 +1399,10 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 		log_amx("Invalid response: %s", content);
 	}
 
-	_handlePurchaseServiceResponse(playerId, return_value, szText, str_to_num(szPositive), str_to_num(szBsid), szWarnings);
+	_handlePurchaseServiceResponse(playerId, szText, str_to_num(szPositive), szWarnings);
 }
 
-_handlePurchaseServiceResponse(id, const return_value[], const message[], positive, bsid, const szWarnings[])
+_handlePurchaseServiceResponse(id, const message[], positive, const szWarnings[])
 {
 	if (! is_user_connected(id)) {
 		return;
@@ -2068,27 +2065,27 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 {
 	// We want to get "nmemb" chars from "data", because sometime there is some noise at the end od "data"
 	format(g_responses[requestId], min(nmemb, MAX_RESPONSE), data);
-    
+
 	// tell curl how many bytes we handled
-    return size * nmemb;
+	return size * nmemb;
 }
 
 @requestComplete(CURL: curl, CURLcode: code, const data[requestStruct])
 {
-    if (code != CURLE_OK) {
-        new szError[128];
-        curl_easy_strerror(code, szError, charsmax(szError));
-        log_to_file(LOG_FILE, "CURL error: %d %s", code, szError);
-    }
+	if (code != CURLE_OK) {
+		new szError[128];
+		curl_easy_strerror(code, szError, charsmax(szError));
+		log_to_file(LOG_FILE, "CURL error: %d %s", code, szError);
+	}
 
 	new statusCode;
 	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, statusCode);
 
-    runRequestCallback(data[RequestCallback], g_responses[data[RequestId]], data[RequestPlayerId], code, statusCode);
-    g_requestsInProgress[data[RequestId]] = false;
+	runRequestCallback(data[RequestCallback], g_responses[data[RequestId]], data[RequestPlayerId], code, statusCode);
+	g_requestsInProgress[data[RequestId]] = false;
 
-    curl_easy_cleanup(curl);
-    curl_slist_free_all(data[RequestHeaders]);
+	curl_easy_cleanup(curl);
+	curl_slist_free_all(data[RequestHeaders]);
 }
 
 runRequestCallback(const function[], const httpResponseContent[], playerId, CURLcode: code, statusCode)
@@ -2099,7 +2096,7 @@ runRequestCallback(const function[], const httpResponseContent[], playerId, CURL
 
 	if (!strlen(function) || callfunc_begin(function) == 1) {
 		callfunc_push_str(httpResponseContent);
-		callfunc_push_int(code);
+		callfunc_push_int(_:code);
 		callfunc_push_int(statusCode);
 		callfunc_push_int(playerId);
 		callfunc_end();
@@ -2325,7 +2322,7 @@ stock StringURLEncode(const szInput[], szOutput[], const iLen)
 			else if (cChar > 0xFF || cChar < 0x00) {
 				cChar = 0x2A;
 			}
-            
+
 			szOutput[ iFLen++ ] = 0x25;
 			szOutput[ iFLen++ ] = HEXCHARS[ cChar >> 4 ];
 			szOutput[ iFLen++ ] = HEXCHARS[ cChar & 15 ];
