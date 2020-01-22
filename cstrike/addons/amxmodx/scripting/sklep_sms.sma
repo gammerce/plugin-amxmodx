@@ -7,6 +7,7 @@
 #include <custom_color_chat>
 
 #pragma semicolon 1
+#pragma dynamic 65536
 
 forward amxbans_sql_initialized(Handle:sqlTuple, dbPrefix[]);
 forward client_admin(id, flags);
@@ -23,14 +24,35 @@ forward amxx_admin_access(id, flags, timestamp);
 #define KEYS (1<<0)|(1<<9) // Keys: 10
 
 // Logowanie danych
-#define LOG_SQL
-#define CFG_FILE "sklep_sms.cfg"
+new const CFG_FILE[] = "sklep_sms.cfg";
 new const LOG_FILE[] = "sklep_sms.log";
 
 const MAX_COMMAND = 32;
 const MAX_CONTACT = 64;
 const MAX_RANDOM_KEY = 32;
-const MAX_PAYMENT_MODULE_ID = 32;
+const MAX_FLAGS = 26;
+const MAX_SERVER_NAME = 128;
+const MAX_SERVICE_TAG = 16;
+const MAX_SERVICE_NAME = 32;
+const MAX_SMS_TEXT = 32;
+const MAX_PASSWORD = 32;
+const MAX_DESCRIPTION = 28;
+const MAX_CODE = 16;
+const MAX_NUMBER = 16;
+const MAX_NAME = 32;
+const MAX_SID = 18;
+const MAX_IP = 15;
+const MAX_PORT = 8;
+const MAX_FULL_IP = MAX_IP + MAX_PORT + 1; // ip + semicolon + port
+const MAX_URL_HOST = 128;
+const MAX_URL_PATH = 384;
+const MAX_URL = MAX_URL_HOST + MAX_URL_PATH;
+const MAX_HEADERS = 128;
+const MAX_BODY = 384;
+const MAX_FUNCTION = 128;
+const TYPE_NICK = 1<<0;
+const TYPE_IP = 1<<1;
+const TYPE_SID = 1<<2;
 
 new bool:g_AmxbansExists = false;
 
@@ -46,7 +68,7 @@ new const TABLE_PREFIX[] = "ss_";
 new Handle:SqlTuple;
 new bool:g_sqlConnected = false;
 new sql_host[MAX_URL_HOST + 1], sql_user[32], sql_pass[32], sql_db[32];
-new const all_flags[] = "abcdefghijklmnopqrstuyvwxz";
+new const all_flags[MAX_FLAGS + 1] = "abcdefghijklmnopqrstuyvwxz";
 new g_szTemp[4096];
 
 // Server
@@ -60,14 +82,13 @@ new g_serverIp[MAX_IP + 1],
 new g_serverId,
 	g_currency[16],
 	g_smsPlatformId,
-	g_smsModuleId[MAX_PAYMENT_MODULE_ID + 1],
 	g_contact[MAX_CONTACT + 1], 
 	g_randomKey[MAX_RANDOM_KEY + 1], 
 	g_randomKeyMD5[34], 
 	g_shopPageUrl[MAX_URL + 1],
 	g_smsText[MAX_SMS_TEXT + 1],
 	Float:g_vat,
-	g_accountsSteamIds[1024] = "",
+	g_accountsSteamIds[4096] = "",
 	g_licenseToken[63];
 
 // License
@@ -76,36 +97,43 @@ new bool:g_footer = true,
 	bool:g_validationAttempt = false,
 	bool:g_shopRegistered = false;
 
-// Services
 enum e_Service {
 	sID[MAX_SERVICE_ID + 1], 
 	PLUGIN, 
 	sNAME[MAX_SERVICE_NAME + 1], 
 	DESCRIPTION[MAX_DESCRIPTION + 1], 
 	TAG[MAX_SERVICE_TAG + 1], 
-	GROUPS[33], 
-	FLAGS[27], 
+	FLAGS[MAX_FLAGS + 1], 
 	TYPES
 };
 
 new Array:service_plugins, 
 	Array:service_ids, 
-	Array:services;
-	
-// SMS numbers and tariffs
+	Array:g_services;
+
 enum e_SMS {
 	NUMBER[MAX_NUMBER + 1], 
-	sTARIFF, 
+	PRICE, 
 };
-new Array:smses;
+new Array:g_smses;
 
-// Pricing
 enum e_Price {
-	pSERVICE[MAX_SERVICE_ID + 1], 
-	pTARIFF, 
-	AMOUNT, 
+	pID,
+	pSERVICE_ID[MAX_SERVICE_ID + 1], 
+	SMS_PRICE, 
+	QUANTITY, 
 };
-new Array:pricelist;
+new Array:g_prices;
+
+enum e_PlayerFlags {
+	pfPLAYER[33], 
+	pfFLAGS, 
+	pfPASSWORD[MAX_PASSWORD+2], 
+	pfTYPE
+};
+new Array:g_playersFlags;
+new bool:g_playersLoaded = false;
+new g_lastReassign;
 
 // Dodatkowe zmienne
 new which_service[33], 
@@ -114,7 +142,7 @@ new which_service[33],
 	b_types[33];
 
 // Requests
-const MAX_RESPONSE = 1024;
+const MAX_RESPONSE = 4096;
 const MAX_REQUESTS_COUNT = 5;
 new g_requestCounter = 0,
 	g_responses[MAX_REQUESTS_COUNT][MAX_RESPONSE + 1],
@@ -127,24 +155,12 @@ enum requestStruct {
 	RequestPlayerId,
 };
 
-// Players flags
-enum e_PlayerFlags {
-	pfPLAYER[33], 
-	pfFLAGS, 
-	pfPASSWORD[MAX_PASSWORD+2], 
-	pfTYPE
-};
-new Array:g_playersFlags;
-new bool:g_playersLoaded = false;
-new g_lastReassign;
-
 public plugin_natives()
 {
 	register_library("shop_sms");
 	register_native("ss_register_service", "native_registerService");
 	register_native("ss_show_service_purchase", "native_showServicePurchase");
 	register_native("ss_show_sms_info", "native_displaySmsDetails");
-	register_native("ss_add_code", "native_addSmsCode");
 	register_native("ss_log", "native_addLog");
 	register_native("ss_is_steam", "native_is_steam");
 }
@@ -176,9 +192,9 @@ public plugin_precache()
 	service_ids = ArrayCreate(MAX_SERVICE_ID + 1);
 	
 	g_playersFlags = ArrayCreate(e_PlayerFlags);
-	smses = ArrayCreate(e_SMS);
-	services = ArrayCreate(e_Service);
-	pricelist = ArrayCreate(e_Price);
+	g_smses = ArrayCreate(e_SMS);
+	g_services = ArrayCreate(e_Service);
+	g_prices = ArrayCreate(e_Price);
 }
 
 public plugin_init()
@@ -384,44 +400,136 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 		return;
 	}
 
-	new szServices[512];
-
-	extractFieldValue(content, "id", g_szTemp, charsmax(g_szTemp));
-	g_serverId = str_to_num(g_szTemp);
-	extractFieldValue(content, "sms_platform_id", g_szTemp, charsmax(g_szTemp));
-	g_smsPlatformId = str_to_num(g_szTemp);
-	extractFieldValue(content, "sms_module_id", g_smsModuleId, charsmax(g_smsModuleId));
-	extractFieldValue(content, "sms_text", g_smsText, charsmax(g_smsText));
-	extractFieldValue(content, "services", szServices, charsmax(szServices));
-	extractFieldValue(content, "steam_ids", g_accountsSteamIds, charsmax(g_accountsSteamIds));
-	extractFieldValue(content, "currency", g_currency, charsmax(g_currency));
-	extractFieldValue(content, "contact", g_contact, charsmax(g_contact));
-	extractFieldValue(content, "vat", g_szTemp, charsmax(g_szTemp));
-	g_vat = str_to_float(g_szTemp);
-	extractFieldValue(content, "license_token", g_licenseToken, charsmax(g_licenseToken));
-
+	getField(content, "license_token", g_licenseToken, charsmax(g_licenseToken));
 	_validateLicense();
-	_getServices(szServices);
-	_getSmsNumbers();
+
+	getField(content, "id", g_szTemp, charsmax(g_szTemp));
+	g_serverId = str_to_num(g_szTemp);
+	getField(content, "sms_platform_id", g_szTemp, charsmax(g_szTemp));
+	g_smsPlatformId = str_to_num(g_szTemp);
+	getField(content, "sms_text", g_smsText, charsmax(g_smsText));
+	getField(content, "steam_ids", g_accountsSteamIds, charsmax(g_accountsSteamIds));
+	getField(content, "currency", g_currency, charsmax(g_currency));
+	getField(content, "contact", g_contact, charsmax(g_contact));
+	getField(content, "vat", g_szTemp, charsmax(g_szTemp));
+	g_vat = str_to_float(g_szTemp);
+
+	_extractSmsNumbers(content);
+	_extractPrices(content);
+	_extractServices(content);
+
+	_stopPlugins();
+	_checkLoadedServices();
 }
 
-_getServices(const services[])
+_extractSmsNumbers(const content[])
 {
-	// Sprawdzanie dostepnosci usług
-	new service_id[MAX_SERVICE_ID + 1], service_id_space[MAX_SERVICE_ID + 2 + 1], ids[512], ids_len = 0, ids_max = charsmax(ids);
+	new key[256];
+
+	formatex(key, charsmax(key), "sn.c");
+	getField(content, key, g_szTemp, charsmax(g_szTemp));
+	new count = str_to_num(g_szTemp);
+
+	for (new i = 0; i < count; ++i) {
+		new sms[e_SMS];
+		
+		formatex(key, charsmax(key), "sn.%d", i);
+		getField(content, key, sms[NUMBER], MAX_NUMBER);
+
+		sms[PRICE] = get_sms_cost(sms[NUMBER]);
+
+		ArrayPushArray(g_smses, sms);
+	}
+}
+
+_extractPrices(const content[])
+{
+	new key[256];
+
+	formatex(key, charsmax(key), "pr.c");
+	getField(content, key, g_szTemp, charsmax(g_szTemp));
+	new count = str_to_num(g_szTemp);
+
+	for (new i = 0; i < count; ++i) {
+		new price[e_Price];
+		
+		formatex(key, charsmax(key), "pr.%d.i", i);
+		getField(content, key, g_szTemp, charsmax(g_szTemp));
+		price[pID] = str_to_num(g_szTemp);
+		
+		formatex(key, charsmax(key), "pr.%d.s", i);
+		getField(content, key, price[pSERVICE_ID], MAX_SERVICE_ID);
+
+		formatex(key, charsmax(key), "pr.%d.p", i);
+		getField(content, key, g_szTemp, charsmax(g_szTemp));
+		price[SMS_PRICE] = str_to_num(g_szTemp);
+
+		formatex(key, charsmax(key), "pr.%d.q", i);
+		getField(content, key, g_szTemp, charsmax(g_szTemp));
+		
+		if (strlen(g_szTemp)) {
+			price[QUANTITY] = str_to_num(g_szTemp);
+		} else {
+			price[QUANTITY] = -1;
+		}
+
+		ArrayPushArray(g_prices, price);
+	}
+}
+
+_extractServices(const content[])
+{
+	new key[256];
+
+	formatex(key, charsmax(key), "se.c");
+	getField(content, key, g_szTemp, charsmax(g_szTemp));
+	new count = str_to_num(g_szTemp);
+
+	for (new i = 0; i < count; ++i) {
+		new service[e_Service];
+		
+		formatex(key, charsmax(key), "se.%d.i", i);
+		getField(content, key, service[sID], MAX_SERVICE_ID);
+		
+		service[PLUGIN] = _getServicePluginByID(service[sID]);
+
+		formatex(key, charsmax(key), "se.%d.n", i);
+		getField(content, key, service[sNAME], MAX_SERVICE_NAME);
+
+		formatex(key, charsmax(key), "se.%d.s", i);
+		getField(content, key, service[DESCRIPTION], MAX_DESCRIPTION);
+
+		formatex(key, charsmax(key), "se.%d.ta", i);
+		getField(content, key, service[TAG], MAX_SERVICE_TAG);
+
+		formatex(key, charsmax(key), "se.%d.f", i);
+		getField(content, key, service[FLAGS], MAX_FLAGS);
+
+		formatex(key, charsmax(key), "se.%d.ty", i);
+		getField(content, key, g_szTemp, charsmax(g_szTemp));
+		service[TYPES] = str_to_num(g_szTemp);
+
+		ArrayPushArray(g_services, service);
+
+		// Wyslanie danych uslugi do pluginu
+		new ret, forward_handle;
+		forward_handle = CreateOneForward(service[PLUGIN], "ss_service_data", FP_STRING, FP_STRING);
+		ExecuteForward(forward_handle, ret, service[sNAME], service[FLAGS]);
+		DestroyForward(forward_handle);
+	}
+}
+
+_stopPlugins()
+{
+	new service_id[MAX_SERVICE_ID + 1];
+	
 	for (new i = 0; i < ArraySize(service_ids); ++i) {
 		ArrayGetString(service_ids, i, service_id, charsmax(service_id));
-		formatex(service_id_space, charsmax(service_id_space), " %s ", service_id);
-		
-		if (containi(services, service_id_space) != -1) {
-			if (ids_len) {
-				ids_len += formatex(ids[ids_len], ids_max-ids_len, ",");
-			}
-				
-			ids_len += formatex(ids[ids_len], ids_max-ids_len, "'%s'", service_id);
-		}
-		else { // Usługa nieaktywna, lub brak usługi
-			// Zatrzymaj plugin uslugi
+		new index = _getServiceByID(service_id);
+
+		// Service is inactive or does not exist
+		if (index == -1) {
+			// Stop the plugin
 			new plugin_name[64];
 			get_plugin(ArrayGetCell(service_plugins, i), plugin_name, charsmax(plugin_name));
 			pause("acd", plugin_name);
@@ -429,128 +537,6 @@ _getServices(const services[])
 			ArrayDeleteItem(service_plugins, i);
 			i -= 1;
 		}
-	}
-	
-	// Jest chociaz jedna usluga, wiec pobieramy dane o uslugach
-	if (ids_len) {
-		if (SqlTuple) {
-			formatex(g_szTemp, charsmax(g_szTemp),
-				"SELECT * FROM `%sservices` \
-				WHERE `id` IN(%s) \
-				ORDER BY `order` ASC",
-				TABLE_PREFIX, ids
-			);
-		
-			SQL_ThreadQuery(SqlTuple, "getServicesHandler", g_szTemp);
-		}
-	} else {
-		_checkLoadedServices();
-	}
-}
-
-public getServicesHandler(FailState, Handle:Query, Error[], Errorcode) {
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	new service[e_Service];
-	new ids[512], ids_len = 0, ids_max = charsmax(ids);
-	while (SQL_MoreResults(Query))
-	{
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "id"), service[sID], MAX_SERVICE_ID);
-		service[PLUGIN] = _getServicePluginByID(service[sID]);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "name"), service[sNAME], MAX_SERVICE_NAME);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "short_description"), service[DESCRIPTION], MAX_DESCRIPTION);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tag"), service[TAG], MAX_SERVICE_TAG);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "flags"), service[FLAGS], 26);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "groups"), service[GROUPS], 32);
-		service[TYPES] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "types"));
-		
-		ArrayPushArray(services, service);
-			
-		// Wyslanie danych uslugi do pluginu
-		new ret, forward_handle;
-		forward_handle = CreateOneForward(service[PLUGIN], "ss_service_data", FP_STRING, FP_STRING);
-		ExecuteForward(forward_handle, ret, service[sNAME], service[FLAGS]);
-		DestroyForward(forward_handle);
-		
-		// Przygotowywanie zapytania o priceliste
-		if (ids_len) {
-			ids_len += formatex(ids[ids_len], ids_max-ids_len, ",");
-		}
-		
-		ids_len += formatex(ids[ids_len], ids_max-ids_len, "'%s'", service[sID]);
-		
-		SQL_NextRow(Query);
-	}
-	
-	_checkLoadedServices();
-	
-	// Jest chociaz jedna usluga
-	if (ids_len) {
-		if (SqlTuple) {
-			formatex(g_szTemp, charsmax(g_szTemp), 
-				"SELECT * FROM `%spricelist` \
-				WHERE (`server`='%d' OR `server`='-1') AND `service` IN (%s) \
-				ORDER BY `amount` ASC", 
-				TABLE_PREFIX, g_serverId, ids
-			);
-			SQL_ThreadQuery(SqlTuple, "getPriceListHandler", g_szTemp);
-		}
-	}
-}
-
-public getPriceListHandler(FailState, Handle:Query, Error[], Errorcode)
-{		
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	while (SQL_MoreResults(Query))
-	{
-		new price[e_Price];
-		
-		price[pTARIFF] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tariff"));
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "service"), price[pSERVICE], MAX_SERVICE_ID);
-		price[AMOUNT] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "amount"));
-		
-		ArrayPushArray(pricelist, price);
-		
-		SQL_NextRow(Query);
-	}
-}
-
-_getSmsNumbers()
-{
-	if (SqlTuple) {
-		new payment_module_id[MAX_PAYMENT_MODULE_ID + 1];
-		formatex(payment_module_id, charsmax(payment_module_id), "%s", g_smsModuleId);
-		escapeQuotes(payment_module_id, charsmax(payment_module_id));
-		
-		formatex(g_szTemp, charsmax(g_szTemp),
-			"SELECT `number`, `tariff` \
-			FROM `%ssms_numbers` \
-			WHERE `service` = '%s'",
-			TABLE_PREFIX, payment_module_id
-		);
-		SQL_ThreadQuery(SqlTuple, "getSmsNumbersHandler", g_szTemp);
-	}
-}
-
-public getSmsNumbersHandler(FailState, Handle:Query, Error[], Errorcode)
-{	
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	new sms[e_SMS];
-	while (SQL_MoreResults(Query))
-	{
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "number"), sms[NUMBER], MAX_NUMBER);
-		sms[sTARIFF] = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "tariff"));
-		ArrayPushArray(smses, sms);
-		
-		SQL_NextRow(Query);
 	}
 }
 
@@ -883,7 +869,7 @@ _openShopMenu(id)
 		return;
 	}
 	
-	if (!ArraySize(services)) {
+	if (!ArraySize(g_services)) {
 		client_print_color(id, Red, "^4[%s] ^1Brak dostepnych uslug do kupienia.", PREFIX);
 		return;
 	}
@@ -903,16 +889,10 @@ _openShopMenu(id)
 	new menu_callback = menu_makecallback("shopMenu_callback");
 	
 	new szText[64], service[e_Service];
-	for (new i = 0; i < ArraySize(services); ++i) {
+	for (new i = 0; i < ArraySize(g_services); ++i) {
 		new data[4];
 		data[0] = i + 1;
-		// Pobierz dane o usludze
-		ArrayGetArray(services, i, service);
-		
-		// Usluga wymaga posiadania grupy, TODO zakodzic to
-		// if (strlen(service[GROUPS])) {
-		//	 continue;
-		// }
+		ArrayGetArray(g_services, i, service);
 		
 		// Sforamtuj punkt w menu
 		if (service[DESCRIPTION]) {
@@ -934,7 +914,7 @@ _openShopMenu(id)
 		}
 	}
 	
-	// Wyjdz zamiast Exit
+	// Replace Exit with Wyjdz
 	menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
 	menu_display(id, menu);
 	
@@ -971,47 +951,45 @@ _openPricingMenu(id, service_id)
 	}
 		
 	new service[e_Service];
-	ArrayGetArray(services, service_id, service);
-		
 	new szText[64], data[3];
 	
+	ArrayGetArray(g_services, service_id, service);
 	formatex(szText, charsmax(szText), "\rSklep SMS^n\yWybierz ilosc %s:", service[sNAME]);
 	
 	new menu = menu_create(szText, "pricingMenu_handler");
 	
-	new price[e_Price], number[MAX_NUMBER+1];
-	for (new i = 0; i < ArraySize(pricelist); ++i) {
-		ArrayGetArray(pricelist, i, price);
+	new price[e_Price];
+	for (new i = 0; i < ArraySize(g_prices); ++i) {
+		ArrayGetArray(g_prices, i, price);
+		
 		// ID usługi jest inne
-		if (!equali(price[pSERVICE], service[sID])) {
+		if (!equali(price[pSERVICE_ID], service[sID])) {
 			continue;
 		}
-		
-		// Pobranie numeru na ktory trzeba wyslac SMSa
-		setc(number, strlen(number), 0);
-		_getNumberByTariff(price[pTARIFF], number, charsmax(number));
-		
-		// Przy danej metodzie płatności nie można użyć danej taryfy
-		if (!strlen(number)) {
+
+		// There is no SMS with a given price
+		if (_getSmsIndexByPrice(price[SMS_PRICE]) == -1) {
 			continue;
 		}
+
+		new quantity[32 + 1];
+		_getPriceQuantity(i, service_id, quantity, charsmax(quantity));
 		
-		new amount[32 + 1];
-		if (price[AMOUNT] == -1) { // Jezeli -1 to usluga jest na zawsze
-			formatex(amount, charsmax(amount), "Na zawsze");
-		} else {
-			groupDigits(price[AMOUNT], amount, charsmax(amount));
-			format(amount, charsmax(amount), "%s %s", amount, service[TAG]);
-		}
-		new temp_cost = get_sms_cost(number);
 		formatex(szText, charsmax(szText), 
 			"\y%s \wza %d.%s %s + VAT\d ( %d.%s %s )", 
-			amount, temp_cost/100, two_number_value(temp_cost%100), g_currency, floatround(temp_cost*g_vat)/100, 
-			two_number_value(floatround(temp_cost*g_vat)%100), g_currency
+			quantity,
+			price[SMS_PRICE] / 100,
+			two_number_value(price[SMS_PRICE] % 100),
+			g_currency,
+			floatround(price[SMS_PRICE] * g_vat) / 100, 
+			two_number_value(floatround(price[SMS_PRICE] * g_vat) %100),
+			g_currency
 		);
+		
 		data[0] = service_id+1;
 		data[1] = min(127, i); // TODO: Problem przy ilosci uslug powyzej 256!
 		data[2] = min(127, i-data[1]);
+		
 		menu_additem(menu, szText, data);
 	}
 	
@@ -1053,7 +1031,7 @@ public pricingMenu_handler(id, menu, item)
 _openServiceTypeMenu(id)
 {
 	new service[e_Service];
-	ArrayGetArray(services, which_service[id], service);
+	ArrayGetArray(g_services, which_service[id], service);
 	
 	if (service[TYPES] & (TYPE_NICK|TYPE_IP|TYPE_SID)) {	
 		// Wyswietlamy menu z wyborem na co chcemy kupic usluge
@@ -1079,7 +1057,7 @@ _openServiceTypeMenu(id)
 public serviceTypeMenu_callback(id, menu, item)
 {	
 	new service[e_Service];
-	ArrayGetArray(services, which_service[id], service);
+	ArrayGetArray(g_services, which_service[id], service);
 
 	switch (item) {
 		case 0: return service[TYPES]&TYPE_NICK ? ITEM_ENABLED : ITEM_DISABLED;
@@ -1148,14 +1126,14 @@ bool:_serviceTypeMenu_checkPass(id, type, const szPassword[MAX_PASSWORD + 1])
 _serviceChosen(id, type = 0, const szPassword[MAX_PASSWORD + 1] = "")
 {	
 	new service[e_Service], price[e_Price];
-	ArrayGetArray(services, which_service[id], service);
-	ArrayGetArray(pricelist, which_price[id], price);
+	ArrayGetArray(g_services, which_service[id], service);
+	ArrayGetArray(g_prices, which_price[id], price);
 	copy(b_passwords[id], MAX_PASSWORD, szPassword);
 	b_types[id] = type;
 
 	new ret;
 	new forward_handle = CreateOneForward(service[PLUGIN], "ss_service_chosen", FP_CELL, FP_CELL);
-	ExecuteForward(forward_handle, ret, id, price[AMOUNT]);
+	ExecuteForward(forward_handle, ret, id, price[QUANTITY]);
 	DestroyForward(forward_handle);
 	
 	if (ret != SS_STOP) {
@@ -1164,10 +1142,7 @@ _serviceChosen(id, type = 0, const szPassword[MAX_PASSWORD + 1] = "")
 }
 
 _openPaymentMethodMenu(id)
-{
-	new service[e_Service];
-	ArrayGetArray(services, which_service[id], service);
-	
+{	
 	new menu = menu_create("Wybierz metode platnosci", "paymentMethodMenu_handler");
 	new menu_callback = menu_makecallback("paymentMethodMenu_callback");
 
@@ -1216,26 +1191,28 @@ _displaySmsDetails(id)
 		return;
 	}
 	
-	new service[e_Service], price[e_Price], number[MAX_NUMBER + 1];
-	ArrayGetArray(services, which_service[id], service);
-	ArrayGetArray(pricelist, which_price[id], price);
-	_getNumberByTariff(price[pTARIFF], number, charsmax(number));
-	
-	new amount[32 + 1];
-	if (price[AMOUNT] == -1) { // Jezeli -1 to usluga jest na zawsze
-		formatex(amount, charsmax(amount), "Na zawsze");
-	} else {
-		groupDigits(price[AMOUNT], amount, charsmax(amount));
-		format(amount, charsmax(amount), "%s %s", amount, service[TAG]);
-	}
+	new service[e_Service], price[e_Price], sms[e_SMS], quantity[32 + 1];
+	ArrayGetArray(g_services, which_service[id], service);
+	ArrayGetArray(g_prices, which_price[id], price);
+
+	new sms_index = _getSmsIndexByPrice(price[SMS_PRICE]);
+	ArrayGetArray(g_smses, sms_index, sms);
+
+	_getPriceQuantity(which_price[id], which_service[id], quantity, charsmax(quantity));
 	
 	formatex(g_szTemp, charsmax(g_szTemp), "\rSklep SMS^n^n");
-	format(g_szTemp, charsmax(g_szTemp), "%sWybrales/as opcje zakupu %s ^n\wInfo: \y%s", g_szTemp, service[sNAME], amount);
-	new temp_cost = get_sms_cost(number);
+	format(g_szTemp, charsmax(g_szTemp), "%sWybrales/as opcje zakupu %s ^n\wInfo: \y%s", g_szTemp, service[sNAME], quantity);
 	format(g_szTemp, charsmax(g_szTemp), 
 		"%s^n^n\rW celu dokonania zakupu, wyslij SMSa^n\wO tresci: \y%s^n\wNa numer: \y%s^n\wKoszt: \y%d.%s %s + VAT\d ( %d.%s %s )", 
-		g_szTemp, g_smsText, number, temp_cost/100, two_number_value(temp_cost%100), g_currency, floatround(temp_cost*g_vat)/100, 
-		two_number_value(floatround(temp_cost * g_vat)%100), g_currency
+		g_szTemp,
+		g_smsText,
+		sms[NUMBER],
+		price[SMS_PRICE] / 100,
+		two_number_value(price[SMS_PRICE] % 100),
+		g_currency,
+		floatround(price[SMS_PRICE] * g_vat)/100, 
+		two_number_value(floatround(price[SMS_PRICE] * g_vat) % 100),
+		g_currency
 	);
 	format(g_szTemp, charsmax(g_szTemp), "%s^n^n\wPo wyslaniu SMSa poczekaj na kod zwrotny.^nW celu wprowadzenia go, wcisnij: \y1^n^n\wAby wyjsc, wcisnij: \y0", g_szTemp);
 	
@@ -1270,7 +1247,6 @@ public smsDetails_handler(id, key)
 	}
 }
 
-// Wprowadzanie kodu zwrotnego
 public onSmsCodeEntered(id)
 {	
 	if (!is_user_connected(id)) {
@@ -1320,7 +1296,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		new header[MAX_HEADERS + 1];
 
 		// Pobieramy dane o usludze
-		ArrayGetArray(services, which_service[id], service);
+		ArrayGetArray(g_services, which_service[id], service);
 		
 		// Pobieramy dane gracza Nick / IP / SID
 		switch (b_types[id]) {
@@ -1340,8 +1316,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		// Get user's SteamID
 		get_user_authid(id, steam_id, charsmax(steam_id));
 		
-		// Get tariff
-		ArrayGetArray(pricelist, which_price[id], price);
+		ArrayGetArray(g_prices, which_price[id], price);
 	
 		// Encode url params
 		StringURLEncode(service[sID], u_service_id, charsmax(u_service_id));
@@ -1361,8 +1336,8 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		headers = curl_slist_append(headers, header);
 		
 		formatex(body, charsmax(body),
-			"sign=%s&service=%s&type=%d&auth_data=%s&password=%s&method=%s&server=%d&payment_platform=%d&sms_code=%s&tariff=%d&ip=%s",
-			sign, u_service_id, b_types[id], u_auth_data, u_password, method, g_serverId, g_smsPlatformId, u_sms_code, price[pTARIFF], ip
+			"sign=%s&service_id=%s&type=%d&auth_data=%s&password=%s&method=%s&server_id=%d&payment_platform_id=%d&sms_code=%s&price_id=%d&ip=%s",
+			sign, u_service_id, b_types[id], u_auth_data, u_password, method, g_serverId, g_smsPlatformId, u_sms_code, price[pID], ip
 		);
 		
 		formatex(url, charsmax(url), "%s/api/server/purchase?key=%s&language=polish", g_shopPageUrl, g_randomKeyMD5);
@@ -1429,30 +1404,21 @@ _handlePurchaseServiceResponse(id, const message[], positive, const szWarnings[]
 		return;
 	}
 		
-	new ret, forward_handle, service[e_Service], price[e_Price], number[MAX_NUMBER+1];
-	ArrayGetArray(services, which_service[id], service);
-	ArrayGetArray(pricelist, which_price[id], price);
-	_getNumberByTariff(price[pTARIFF], number, charsmax(number));
+	new ret, forward_handle, service[e_Service], price[e_Price];
+	ArrayGetArray(g_services, which_service[id], service);
+	ArrayGetArray(g_prices, which_price[id], price);
 	
 	forward_handle = CreateOneForward(service[PLUGIN], "ss_service_bought", FP_CELL, FP_CELL);
-	ExecuteForward(forward_handle, ret, id, price[AMOUNT]);
+	ExecuteForward(forward_handle, ret, id, price[QUANTITY]);
 	DestroyForward(forward_handle);
+
+	new quantity[32 + 1];
+	_getPriceQuantity(which_price[id], which_service[id], quantity, charsmax(quantity));
 	
 	// Wystapil jakis blad
 	if (ret == SS_ERROR) {		
 		client_print_color(id, Red, "^4[%s] ^1Wystapil ^3blad ^1podczas kupowania uslugi. Zglos nam to: ^4%s", PREFIX, g_contact);
-		
-		new amount[32 + 1];
-		if (price[AMOUNT] == -1) { // Jezeli -1 to usluga jest na zawsze
-			formatex(amount, charsmax(amount), "Na zawsze");
-		}
-		else {
-			groupDigits(price[AMOUNT], amount, charsmax(amount));
-			format(amount, charsmax(amount), "%s %s", amount, service[TAG]);
-		}
-		
-		_log(id, "Wystapil blad podczas kupowania %s - %s; Taryfa: %d", service[sNAME], amount, price[pTARIFF]);
-		
+		_log(id, "Wystapil blad podczas kupowania %s - %s; Kwota: %d", service[sNAME], quantity, price[SMS_PRICE]);
 		return;
 	}
 	
@@ -1482,16 +1448,7 @@ _handlePurchaseServiceResponse(id, const message[], positive, const szWarnings[]
 		show_motd(id, g_szTemp, "Informacje dotyczace uslugi");
 	}
 	
-	new amount[32 + 1];
-	if (price[AMOUNT] == -1) {// Jezeli -1 to usluga jest na zawsze
-		formatex(amount, charsmax(amount), "Na zawsze");
-	}
-	else {
-		groupDigits(price[AMOUNT], amount, charsmax(amount));
-		format(amount, charsmax(amount), "%s %s", amount, service[TAG]);
-	}
-	
-	client_print_color(id, Blue, "^4[%s] ^1Prawidlowo kupiono ^4%s^1: %s", PREFIX, service[sNAME], amount);
+	client_print_color(id, Blue, "^4[%s] ^1Prawidlowo kupiono ^4%s^1: %s", PREFIX, service[sNAME], quantity);
 	
 	// Jezeli usluga ma flagi do ustawienia to wczytujemy ponownie dane z bazy
 	if (service[FLAGS]) {
@@ -1579,33 +1536,8 @@ public showPlayerServices_handler(id, menu, item)
 	menu_destroy(menu);
 }
 
-/**
- * Dodanie kodu do bazy kodow
- *
- * @param const char[]	sms_code
- * @param int			sms_tariff	
- * @param bool			free
- */
-_addSmsCode(const sms_code[], sms_tariff, bool:free = true)
-{	
-	formatex(g_szTemp, charsmax(g_szTemp),
-		"INSERT INTO `%ssms_codes` (`code`, `tariff`, `free`) \
-		VALUES ('%s', '%d', '%d')",
-		TABLE_PREFIX, sms_code, sms_tariff, free
-	);
-	
-	if (!SqlTuple) {
-		return SS_ERROR;
-	}
-	
-	SQL_ThreadQuery(SqlTuple, "IgnoreHandle", g_szTemp);
-	_log(0, "Dodano SMSa do tabeli kodow do wykorzystania. Kod: %s Taryfa: %d", sms_code, sms_tariff);
-	return SS_OK;
-}
-
 _log(id, const szFormat[], any:...)
-{	
-	#if defined LOG_SQL
+{
 	vformat(g_szTemp, charsmax(g_szTemp), szFormat, 3);
 	
 	if (is_user_connected(id)) {
@@ -1615,25 +1547,8 @@ _log(id, const szFormat[], any:...)
 		get_user_authid(id, sid, charsmax(sid));
 		format(g_szTemp, charsmax(g_szTemp), "%s; %s; %s. %s", name, ip, sid, g_szTemp);
 	}
-	
-	_logToSql(g_szTemp);
-	#endif
-}
 
-_logToSql(const text[])
-{
-	if (SqlTuple) {
-		format(g_szTemp, charsmax(g_szTemp), "%s. Serwer: %d", text, g_serverId);
-		escapeQuotes(g_szTemp, charsmax(g_szTemp));
-		
-		// Cannot be formatex, because param text is probably g_szTemp
-		format(g_szTemp, charsmax(g_szTemp),
-			"INSERT INTO `%slogs` (text) \
-			VALUES ('%s')",
-			TABLE_PREFIX, g_szTemp
-		);
-		SQL_ThreadQuery(SqlTuple, "IgnoreHandle", g_szTemp);
-	}
+	log_to_file(LOG_FILE, "%s", g_szTemp);
 }
 
 public displayCommercial()
@@ -1847,16 +1762,15 @@ public keepDisplayingMenu(data[])
 
 _checkLoadedServices()
 {	
-	if (!ArraySize(services)) {
+	if (!ArraySize(g_services)) {
 		log_amx("Nie zaladowano zadnych uslug do zakupienia.");
 	} else {
-		log_amx("Zaladowano %d uslug do zakupienia.", ArraySize(services));
+		log_amx("Zaladowano %d uslug do zakupienia.", ArraySize(g_services));
 	}
 }
 
 _invalidPath(id, const path[])
-{	
-	_log(0, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
+{
 	log_to_file(LOG_FILE, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
 	
 	if (id) {
@@ -1873,15 +1787,15 @@ _getServicePluginByID(const id[])
 			return ArrayGetCell(service_plugins, i);
 		}
 	}
-	
+
 	return -1;
 }
 
 _getServiceByID(const id[])
 {
 	new service[e_Service];
-	for (new i = 0; i < ArraySize(services); ++i) {
-		ArrayGetArray(services, i, service);
+	for (new i = 0; i < ArraySize(g_services); ++i) {
+		ArrayGetArray(g_services, i, service);
 		if (equal(id, service[sID])) {
 			return i;
 		}
@@ -1889,16 +1803,17 @@ _getServiceByID(const id[])
 	return -1;
 }
 
-_getNumberByTariff(tariff, output[], len)
-{	
+_getSmsIndexByPrice(price)
+{
 	new sms[e_SMS];
-	for (new i = 0; i < ArraySize(smses); ++i) {
-		ArrayGetArray(smses, i, sms);
-		if (tariff == sms[sTARIFF]) {
-			copy(output, len, sms[NUMBER]);
-			return;
+	for (new i = 0; i < ArraySize(g_smses); ++i) {
+		ArrayGetArray(g_smses, i, sms);
+		if (price == sms[PRICE]) {
+			return i;
 		}
 	}
+
+	return -1;
 }
 
 _getOrderOfType(type)
@@ -1910,6 +1825,24 @@ _getOrderOfType(type)
 	}
 	
 	return 0;
+}
+
+_getPriceQuantity(price_id, service_id, output[], len)
+{
+	new price[e_Price];
+	new service[e_Service];
+
+	ArrayGetArray(g_prices, price_id, price);
+	ArrayGetArray(g_services, service_id, service);
+
+	if (price[QUANTITY] == -1) {
+		formatex(output, len, "Na zawsze");
+	}
+	else {
+		new temp[32 + 1];
+		groupDigits(price[QUANTITY], temp, charsmax(temp));
+		formatex(output, len, "%s %s", temp, service[TAG]);
+	}
 }
 
 _canUseShop()
@@ -2078,6 +2011,10 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 		log_to_file(LOG_FILE, "CURL error: %d %s", code, szError);
 	}
 
+	if (strlen(g_responses[data[RequestId]]) >= MAX_RESPONSE) {
+		log_to_file(LOG_FILE, "Response too big error | %s", g_responses[data[RequestId]]);
+	}
+
 	new statusCode;
 	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, statusCode);
 
@@ -2127,27 +2064,10 @@ public native_registerService(plugin, params)
 	return SS_OK;
 }
 
-// Dodawanie kodu do listy kodow do wykorzystania
-public native_addSmsCode(plugin, params)
-{	
-	if (params != 2) {
-		return SS_BAD_ARGS;
-	}
-	
-	new sms_code[MAX_CODE + 1], tariff;
-	get_string(1, sms_code, charsmax(sms_code));
-	tariff = get_param(2);
-	
-	return _addSmsCode(sms_code, tariff);
-}
-
-// Logowanie danych z pluginow zewnetrznych
 public native_addLog(plugin, params)
 {	
-	#if defined LOG_SQL
 	vdformat(g_szTemp, charsmax(g_szTemp), 1, 2);
-	_logToSql(g_szTemp);
-	#endif
+	log_to_file("%s", g_szTemp);
 }
 
 public native_showServicePurchase(plugin, params)
@@ -2214,20 +2134,22 @@ stock escapeQuotes(string[], string_len)
 	replace_all(string, string_len, "'", "\'");
 }
 
-stock get_sms_cost(const szNumber[])
+stock get_sms_cost(const number[])
 {	
-	if (strlen(szNumber) < 4) {
+	if (strlen(number) < 4) {
 		return 0;
 	}
-	else if (szNumber[0] == '7') {
+	
+	if (number[0] == '7') {
 		new temp[4];
-		formatex(temp, charsmax(temp), "%c", szNumber[1]);
-		return szNumber[1] == '0' ? 50 : str_to_num(temp)*100;
+		formatex(temp, charsmax(temp), "%c", number[1]);
+		return number[1] == '0' ? 50 : str_to_num(temp) * 100;
 	}
-	else if (szNumber[0] == '9') {
+	
+	if (number[0] == '9') {
 		new temp[4];
-		formatex(temp, charsmax(temp), "%c%c", szNumber[1], szNumber[2]);
-		return str_to_num(temp)*100;
+		formatex(temp, charsmax(temp), "%c%c", number[1], number[2]);
+		return str_to_num(temp) * 100;
 	}
 	
 	return 0;
@@ -2259,11 +2181,11 @@ stock groupDigits(a, output[], len)
 	}
 }
 
-stock extractFieldValue(const text[], const field[], output[], len)
+stock getField(const text[], const field[], output[], len)
 {
 	new pattern[64];
 	formatex(pattern, charsmax(pattern), "^^%s:(.*)$", field);
-	matchRegex(text, pattern, output, len, 1);
+	return matchRegex(text, pattern, output, len, 1);
 }
 
 stock matchRegex(const text[], const pattern[], output[], len, group = 0)
@@ -2274,9 +2196,11 @@ stock matchRegex(const text[], const pattern[], output[], len, group = 0)
 	if (reg > REGEX_NO_MATCH) {
 		regex_substr(reg, group, output, len);
 		regex_free(reg);
-	} else {
-		log_to_file(LOG_FILE, "Regex error. Pattern: %s, Error: %s, Reg: %d", pattern, error, reg);
+		return true;
 	}
+	
+	log_to_file(LOG_FILE, "Regex error. Pattern: %s, Error: %s, Reg: %d", pattern, error, reg);
+	return false;
 }
 
 stock getXMLValue(const szText[], const tag[], output[], len)

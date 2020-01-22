@@ -14,14 +14,6 @@ native ss_register_service(const service_id[]);
  * service_id[] - id uslugi
 ------------------------------*/
 
-native ss_add_code(sms_code[], tariff);
-/*------------------------------
- * Dodaje kod do listy kodow do wykorzystania
- * ---------------------------
- * sms_code[] - kod SMS
- * tariff - taryfa kodu ( wartosc )
-------------------------------*/
-
 native ss_show_sms_info(id);
 /*------------------------------
  * Kontynuuje proces zakupu po zwroceniu wartosci SS_STOP w forwardzie ss_service_chosen
