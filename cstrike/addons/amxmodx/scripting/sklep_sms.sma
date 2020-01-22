@@ -466,12 +466,7 @@ _extractPrices(const content[])
 
 		formatex(key, charsmax(key), "pr.%d.q", i);
 		getField(content, key, g_szTemp, charsmax(g_szTemp));
-		
-		if (strlen(g_szTemp)) {
-			price[QUANTITY] = str_to_num(g_szTemp);
-		} else {
-			price[QUANTITY] = -1;
-		}
+		price[QUANTITY] = str_to_num(g_szTemp);
 
 		ArrayPushArray(g_prices, price);
 	}
@@ -492,11 +487,15 @@ _extractServices(const content[])
 		getField(content, key, service[sID], MAX_SERVICE_ID);
 		
 		service[PLUGIN] = _getServicePluginByID(service[sID]);
+		if (service[PLUGIN] == -1) {
+			_log("Service plugin was not found | service_id: [%s]", service[sID]);
+			continue;
+		}
 
 		formatex(key, charsmax(key), "se.%d.n", i);
 		getField(content, key, service[sNAME], MAX_SERVICE_NAME);
 
-		formatex(key, charsmax(key), "se.%d.s", i);
+		formatex(key, charsmax(key), "se.%d.d", i);
 		getField(content, key, service[DESCRIPTION], MAX_DESCRIPTION);
 
 		formatex(key, charsmax(key), "se.%d.ta", i);
@@ -510,8 +509,7 @@ _extractServices(const content[])
 		service[TYPES] = str_to_num(g_szTemp);
 
 		ArrayPushArray(g_services, service);
-
-		// Wyslanie danych uslugi do pluginu
+		
 		new ret, forward_handle;
 		forward_handle = CreateOneForward(service[PLUGIN], "ss_service_data", FP_STRING, FP_STRING);
 		ExecuteForward(forward_handle, ret, service[sNAME], service[FLAGS]);
@@ -1256,7 +1254,7 @@ public onSmsCodeEntered(id)
 	new sms_code[MAX_CODE + 1];
 	read_argv(1, sms_code, charsmax(sms_code));
 	
-	_log(id, "Wprowadzono kod: %s", sms_code);
+	_logActor(id, "Wprowadzono kod: %s", sms_code);
 	
 	if (!strlen(sms_code)) {
 		client_print_color(id, Red, "^4[%s] ^1Nie wprowadzono kodu zwrotnego.", PREFIX);
@@ -1351,7 +1349,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, playerId)
 {
 	if (code != CURLE_OK) {
-		log_to_file(LOG_FILE, "Zakup nie zostal sfinalizowany z nieznanych powodow. Error: %d", code);
+		_log("Zakup nie zostal sfinalizowany z nieznanych powodow. Error: %d", code);
 		client_print_color(playerId, Red, "^4[%s] ^1Zakup ^3nie zostal sfinalizowany ^1z nieznanych powodow. Error: %d", PREFIX, code);
 		return;
 	}
@@ -1418,7 +1416,7 @@ _handlePurchaseServiceResponse(id, const message[], positive, const szWarnings[]
 	// Wystapil jakis blad
 	if (ret == SS_ERROR) {		
 		client_print_color(id, Red, "^4[%s] ^1Wystapil ^3blad ^1podczas kupowania uslugi. Zglos nam to: ^4%s", PREFIX, g_contact);
-		_log(id, "Wystapil blad podczas kupowania %s - %s; Kwota: %d", service[sNAME], quantity, price[SMS_PRICE]);
+		_logActor(id, "Wystapil blad podczas kupowania %s - %s; Kwota: %d", service[sNAME], quantity, price[SMS_PRICE]);
 		return;
 	}
 	
@@ -1536,18 +1534,24 @@ public showPlayerServices_handler(id, menu, item)
 	menu_destroy(menu);
 }
 
-_log(id, const szFormat[], any:...)
+_logActor(id, const format[], any:...)
 {
-	vformat(g_szTemp, charsmax(g_szTemp), szFormat, 3);
+	vformat(g_szTemp, charsmax(g_szTemp), format, 3);
 	
 	if (is_user_connected(id)) {
 		new name[MAX_NAME + 1], ip[MAX_IP + 1], sid[MAX_SID + 1];
 		get_user_name(id, name, charsmax(name));
 		get_user_ip(id, ip, charsmax(ip), true);
 		get_user_authid(id, sid, charsmax(sid));
-		format(g_szTemp, charsmax(g_szTemp), "%s; %s; %s. %s", name, ip, sid, g_szTemp);
+		log_to_file(LOG_FILE, "%s; %s; %s. %s", name, ip, sid, g_szTemp);
+	} else {
+		log_to_file(LOG_FILE, "%s", g_szTemp);
 	}
+}
 
+_log(const format[], any:...)
+{
+	vformat(g_szTemp, charsmax(g_szTemp), format, 2);
 	log_to_file(LOG_FILE, "%s", g_szTemp);
 }
 
@@ -1651,7 +1655,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	g_validationAttempt = true;
 
 	if (code != CURLE_OK) {
-		log_to_file(LOG_FILE, "Licencja nie zostala zwalidowana z nieznanych powodow. Error: %d", code);
+		_log("Licencja nie zostala zwalidowana z nieznanych powodow. Error: %d", code);
 		return;
 	}
 
@@ -1688,7 +1692,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	trim(text);
 
 	if (!equal(text, "ok")) {
-		log_to_file(LOG_FILE, "%s", content);
+		_log("%s", content);
 		_errorUnknown();
 		return;
 	}
@@ -1720,17 +1724,17 @@ _checkForSQLErrors(Handle:Query, FailState, Error[], Errorcode)
 	
 	if (FailState != TQUERY_SUCCESS) {
 		if (FailState == TQUERY_QUERY_FAILED) {
-			log_to_file(LOG_FILE, "Nie mozna polaczyc sie z baza danych.");
+			_log("Nie mozna polaczyc sie z baza danych.");
 		}
 		else if (FailState == TQUERY_CONNECT_FAILED) {
-			log_to_file(LOG_FILE, "Zapytanie anulowane.");
+			_log("Zapytanie anulowane.");
 			g_sqlConnected = false;
 		}
 		
-		log_to_file(LOG_FILE, "Tresc bledu (%d): %s", Errorcode, Error);
+		_log("Tresc bledu (%d): %s", Errorcode, Error);
 		
 		SQL_GetQueryString(Query, g_szTemp, charsmax(g_szTemp));
-		log_to_file(LOG_FILE, "Zapytanie: %s", g_szTemp);
+		_log("Zapytanie: %s", g_szTemp);
 		
 		return PLUGIN_HANDLED;
 	}
@@ -1771,7 +1775,7 @@ _checkLoadedServices()
 
 _invalidPath(id, const path[])
 {
-	log_to_file(LOG_FILE, "Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
+	_log("Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
 	
 	if (id) {
 		client_print_color(id, Blue, "^4[%s] ^1Wystapil ^3blad ^1przy zapisywaniu ustawien. Prawdopodobnie ^4brak uprawnien^1.", PREFIX);
@@ -1827,13 +1831,13 @@ _getOrderOfType(type)
 	return 0;
 }
 
-_getPriceQuantity(price_id, service_id, output[], len)
+_getPriceQuantity(price_index, service_index, output[], len)
 {
 	new price[e_Price];
 	new service[e_Service];
 
-	ArrayGetArray(g_prices, price_id, price);
-	ArrayGetArray(g_services, service_id, service);
+	ArrayGetArray(g_prices, price_index, price);
+	ArrayGetArray(g_services, service_index, service);
 
 	if (price[QUANTITY] == -1) {
 		formatex(output, len, "Na zawsze");
@@ -1875,22 +1879,22 @@ bool:_isDebug()
 
 // License
 _errorUnknown() {
-	log_to_file(LOG_FILE, "Error 10 - Wystapil blad podczas odczytywania odpowiedzi od serwera walidujacego licencje. Zobacz logi.");
+	_log("Error 10 - Wystapil blad podczas odczytywania odpowiedzi od serwera walidujacego licencje. Zobacz logi.");
 	g_blocked = true;
 }
 
 _errorLicenseInvalidResponse(statusCode) {
-	log_to_file(LOG_FILE, "Error 11 - Serwer walidacyjny zwrocil bledny HTTP CODE %d.", statusCode);
+	_log("Error 11 - Serwer walidacyjny zwrocil bledny HTTP CODE %d.", statusCode);
 	g_blocked = true;
 }
 
 _errorValidationError() {
-	log_to_file(LOG_FILE, "Error 12 - Walidacja wyslanych danych nie powiodla sie.");
+	_log("Error 12 - Walidacja wyslanych danych nie powiodla sie.");
 	g_blocked = true;
 }
 
 _errorInvalidToken() {
-	log_to_file(LOG_FILE, "Error 13 - Bledny token licencji.");
+	_log("Error 13 - Bledny token licencji.");
 	g_blocked = true;
 }
 
@@ -1906,7 +1910,7 @@ _errorForbidden(const text[] = "") {
 
 // Config
 _errorConfigFailed(code) {
-	log_to_file(LOG_FILE, "Error 20 - Nie udalo sie pobrac konfiguracji serwera. Error: %d", code);
+	_log("Error 20 - Nie udalo sie pobrac konfiguracji serwera. Error: %d", code);
 	g_blocked = true;
 }
 
@@ -1919,7 +1923,7 @@ _errorOutdatedVersion() {
 }
 
 _errorConfigInvalidResponse(statusCode) {
-	log_to_file(LOG_FILE, "Error 23 - Podczas ladowania konfiguracji, strona WWW zwrocila bledny HTTP code %d.", statusCode);
+	_log("Error 23 - Podczas ladowania konfiguracji, strona WWW zwrocila bledny HTTP code %d.", statusCode);
 	g_blocked = true;
 }
 
@@ -1962,14 +1966,14 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
    	
    	handle = curl_easy_init();
    	if (!handle) {
-   		log_to_file(LOG_FILE, "Nie udalo sie utworzyc uchwytu CURL.");
+   		_log("Nie udalo sie utworzyc uchwytu CURL.");
    		return false;
    	}
 
    	new requestId = g_requestCounter++ % MAX_REQUESTS_COUNT;
 
    	if (g_requestsInProgress[requestId]) {
-   		log_to_file(LOG_FILE, "Pula requestetow jest pelna. Request nie zostal wykonany.");
+   		_log("Pula requestetow jest pelna. Request nie zostal wykonany.");
    		return false;
    	}
 
@@ -2008,11 +2012,11 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 	if (code != CURLE_OK) {
 		new szError[128];
 		curl_easy_strerror(code, szError, charsmax(szError));
-		log_to_file(LOG_FILE, "CURL error: %d %s", code, szError);
+		_log("CURL error: %d %s", code, szError);
 	}
 
 	if (strlen(g_responses[data[RequestId]]) >= MAX_RESPONSE) {
-		log_to_file(LOG_FILE, "Response too big error | %s", g_responses[data[RequestId]]);
+		_log("Response too big error | %s", g_responses[data[RequestId]]);
 	}
 
 	new statusCode;
@@ -2038,7 +2042,7 @@ runRequestCallback(const function[], const httpResponseContent[], playerId, CURL
 		callfunc_push_int(playerId);
 		callfunc_end();
 	} else {
-		log_to_file(LOG_FILE, "Funkcja nie zostala prawidlowo wywolana [%s]", function);
+		_log("Funkcja nie zostala prawidlowo wywolana [%s]", function);
 	}
 }
 
@@ -2050,7 +2054,7 @@ runRequestCallback(const function[], const httpResponseContent[], playerId, CURL
 public native_registerService(plugin, params)
 {	
 	if (params != 1) {
-		log_to_file(LOG_FILE, "Wystapil blad podczas dodawania uslugi. Bledna ilosc argumentow funkcji ss_register_service");
+		_log("Wystapil blad podczas dodawania uslugi. Bledna ilosc argumentow funkcji ss_register_service");
 		return SS_BAD_ARGS;
 	}
 		
@@ -2067,7 +2071,7 @@ public native_registerService(plugin, params)
 public native_addLog(plugin, params)
 {	
 	vdformat(g_szTemp, charsmax(g_szTemp), 1, 2);
-	log_to_file("%s", g_szTemp);
+	log_to_file(LOG_FILE, "%s", g_szTemp);
 }
 
 public native_showServicePurchase(plugin, params)
@@ -2199,7 +2203,7 @@ stock matchRegex(const text[], const pattern[], output[], len, group = 0)
 		return true;
 	}
 	
-	log_to_file(LOG_FILE, "Regex error. Pattern: %s, Error: %s, Reg: %d", pattern, error, reg);
+	_log("Regex error. Pattern: %s, Error: %s, Reg: %d", pattern, error, reg);
 	return false;
 }
 

@@ -62,7 +62,7 @@ forward ss_service_addingtolist(id);
  * id - index gracza dokonujacego zakupu
 ------------------------------*/
 
-forward ss_service_chosen(id, amount);
+forward ss_service_chosen(id, quantity);
 /*------------------------------
  * Forward wysylany ( do pluginu z ktorego zostala zarejstrowana usluga )
  * w momencie wybrania uslugi.
@@ -72,16 +72,16 @@ forward ss_service_chosen(id, amount);
  *		Potem musimy go wznowiæ za pomoca natywu ss_show_sms_info.
  * ---------------------------
  * id - index gracza dokonujacego zakupu
- * amount - wybrana ilosc ( opcja )
+ * quantity - wybrana ilosc ( opcja )
 ------------------------------*/
 
-forward ss_service_bought(id, amount);
+forward ss_service_bought(id, quantity);
 /*------------------------------
  * Forward wysylany ( do pluginu z ktorego zostala zarejstrowana usluga ) w momencie zakupu uslugi.
  * Mozna zwrocic wartosc SS_ERROR w przypadku wystapienia bledu przy dodawaniu uslugi.
  * ---------------------------
  * id - index gracza dokonujacego zakupu
- * amount - ilosc wykupionej uslugi
+ * quantity - ilosc wykupionej uslugi
 ------------------------------*/
 
 forward ss_client_access(id, flags);
