@@ -488,7 +488,9 @@ _extractServices(const content[])
 		
 		service[PLUGIN] = _getServicePluginByID(service[sID]);
 		if (service[PLUGIN] == -1) {
-			_log("Service plugin was not found | service_id: [%s]", service[sID]);
+			if (_isDebug()) {
+				_log("Service plugin was not found | service_id: [%s]", service[sID]);
+			}
 			continue;
 		}
 
