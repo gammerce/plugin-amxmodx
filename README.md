@@ -29,11 +29,11 @@ Plugin AMX Mod X do Sklepu SMS, który umożliwia dokonywanie zakupow z serwera.
 #### /sklepsms
 Otwiera menu sklepu
 
-#### /przeladuj
-Wymusza przeładowanie usług wykupionych w sklepie
-
 #### /uslugi
 Wyświetla aktywne usługi gracza
+
+#### /przeladuj
+Wymusza przeładowanie usług wykupionych w sklepie
 
 ## CVARs
 
@@ -41,10 +41,16 @@ Wyświetla aktywne usługi gracza
 Włącza (1) / wyłącza (0) sklep
 
 #### sklepsms_sklep_komenda "/sklepsms"
-Komenda, którą należy wpisać na chacie w celu wyświetlenia menu sklepu. 
+[Komenda](https://github.com/gammerce/plugin-amxmodx#sklepsms), którą należy wpisać na chacie w celu wyświetlenia menu sklepu.
+
+#### sklepsms_przeladuj_komenda "/uslugi"
+[Komenda](https://github.com/gammerce/plugin-amxmodx#uslugi), którą należy wpisać na chacie w celu wyświetlenie usług wykupionych w sklepie.
 
 #### sklepsms_przeladuj_komenda "/przeladuj"
-Komenda, którą należy wpisać na chacie w celu przeładowania usług wykupionych w sklepie
+[Komenda](https://github.com/gammerce/plugin-amxmodx#przeladuj), którą należy wpisać na chacie w celu przeładowania usług wykupionych w sklepie.
 
 #### sklepsms_info "1"
-Czy wyswietlać informację o sklepie na chacie
+Czy wyswietlać informację o sklepie na chacie?
+
+#### sklepsms_ciche_komendy "0"
+Czy ukrywać na chacie komendy sklepu, które użytkownik wpisuje.
