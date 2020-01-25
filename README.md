@@ -23,3 +23,28 @@ Plugin AMX Mod X do Sklepu SMS, który umożliwia dokonywanie zakupow z serwera.
 * ZP: Bezlitosne monety
 * ZP: Ammo Packs
 * BF2: Odznaki ( wymaga edycji kodu ) - [Instrukcja](https://github.com/gammerce/plugin-amxmodx/wiki/Dodanie-us%C5%82ugi-BF2:-Odznaki)
+
+## Komendy chatu
+
+#### /sklepsms
+Otwiera menu sklepu
+
+#### /przeladuj
+Wymusza przeładowanie usług wykupionych w sklepie
+
+#### /uslugi
+Wyświetla aktywne usługi gracza
+
+## CVARs
+
+#### sklepsms_on "1"
+Włącza (1) / wyłącza (0) sklep
+
+#### sklepsms_sklep_komenda "/sklepsms"
+Komenda, którą należy wpisać na chacie w celu wyświetlenia menu sklepu. 
+
+#### sklepsms_przeladuj_komenda "/przeladuj"
+Komenda, którą należy wpisać na chacie w celu przeładowania usług wykupionych w sklepie
+
+#### sklepsms_info "1"
+Czy wyswietlać informację o sklepie na chacie
