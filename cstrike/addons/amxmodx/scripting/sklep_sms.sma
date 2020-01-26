@@ -13,6 +13,8 @@ forward amxbans_sql_initialized(Handle:sqlTuple, dbPrefix[]);
 forward client_admin(id, flags);
 forward amxx_admin_access(id, flags, timestamp);
 
+//#define IS_DEBUG;
+
 #define FLAG_NICK (1<<5)
 
 // ID zadan
@@ -396,11 +398,17 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 	}
 
 	if (statusCode >= 300) {
-		_errorConfigInvalidResponse(statusCode);
+		_log("Invalid server config response HTTP code | %d", statusCode);
+		_errorConfigInvalidResponse();
 		return;
 	}
 
-	getField(content, "license_token", g_licenseToken, charsmax(g_licenseToken));
+	if (!getField(content, "license_token", g_licenseToken, charsmax(g_licenseToken))) {
+		_log("Invalid server config response | %s", content);
+		_errorConfigInvalidResponse();
+		return;
+	}
+	
 	_validateLicense();
 
 	getField(content, "id", g_szTemp, charsmax(g_szTemp));
@@ -488,9 +496,9 @@ _extractServices(const content[])
 		
 		service[PLUGIN] = _getServicePluginByID(service[sID]);
 		if (service[PLUGIN] == -1) {
-			if (_isDebug()) {
-				_log("Service plugin was not found | service_id: [%s]", service[sID]);
-			}
+			#if defined IS_DEBUG
+			_log("Service plugin was not found | service_id: [%s]", service[sID]);
+			#endif
 			continue;
 		}
 
@@ -1694,7 +1702,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	trim(text);
 
 	if (!equal(text, "ok")) {
-		_log("%s", content);
+		_log("Invalid license validation response | %s", content);
 		_errorUnknown();
 		return;
 	}
@@ -1870,11 +1878,6 @@ _canPayWithWallet(id)
 	return containi(g_accountsSteamIds, steam_id) != -1;
 }
 
-bool:_isDebug()
-{
-	return false;
-}
-
 //
 // ------------------------------------------------- ERRORS ----------------------------------------------------
 //
@@ -1924,8 +1927,8 @@ _errorOutdatedVersion() {
 	_make_error("Error 22 - Obecna wersja pluginu nie jest juz wspierana. Dokonaj aktualizacji pluginu.");
 }
 
-_errorConfigInvalidResponse(statusCode) {
-	_log("Error 23 - Podczas ladowania konfiguracji, strona WWW zwrocila bledny HTTP code %d.", statusCode);
+_errorConfigInvalidResponse() {
+	_log("Error 23 - Wystapil blad podczas ladowania konfiguracji serwera.");
 	g_blocked = true;
 }
 
@@ -1962,9 +1965,9 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 {
 	new CURL: handle, curl_slist: newHeaders, data[requestStruct];
 
-	if (_isDebug()) {
-		log_amx("Request | %s %s %s", method, url, body);
-	}
+	#if defined IS_DEBUG
+	log_amx("Request | %s %s %s", method, url, body);
+	#endif
    	
    	handle = curl_easy_init();
    	if (!handle) {
@@ -2033,9 +2036,9 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 
 runRequestCallback(const function[], const httpResponseContent[], playerId, CURLcode: code, statusCode)
 {
-	if (_isDebug()) {
-		log_amx("Request response | %d %d %s", code, statusCode, httpResponseContent);
-	}
+	#if defined IS_DEBUG
+	log_amx("Request response | %d %d %s", code, statusCode, httpResponseContent);
+	#endif
 
 	if (!strlen(function) || callfunc_begin(function) == 1) {
 		callfunc_push_str(httpResponseContent);
