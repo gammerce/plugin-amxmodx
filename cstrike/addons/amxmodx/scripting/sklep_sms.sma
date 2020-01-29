@@ -235,11 +235,14 @@ public plugin_cfg() {
 	
 	_loadCvars();
 	
-	// Łaczenie z baza
 	SqlTuple = SQL_MakeDbTuple(sql_host, sql_user, sql_pass, sql_db);
 	if (! SqlTuple) {
 		_error51();
 	}
+
+	#if defined SQL_SetCharset
+	SQL_SetCharset(SqlTuple, "utf8mb4");
+	#endif
 	
 	// Get server ip
 	new fullIp[MAX_FULL_IP];
@@ -1478,15 +1481,16 @@ _showPlayerServices(id)
 		return;
 	}
 		
-	new name[MAX_NAME * 2 + 1], sid[MAX_SID * 2 + 1], ip[MAX_IP + 1];
+	new name[MAX_NAME + 1], sid[MAX_SID + 1], ip[MAX_IP + 1];
+	new escaped_name[MAX_NAME * 2 + 1], escaped_sid[MAX_SID * 2 + 1], escaped_ip[MAX_IP * 2 + 1];
 	get_user_name(id, name, charsmax(name));
 	get_user_ip(id, ip, charsmax(ip), true);
 	get_user_authid(id, sid, charsmax(sid));
 	
-	escapeQuotes(name, charsmax(name));
-	escapeQuotes(ip, charsmax(ip));
-	escapeQuotes(sid, charsmax(sid));
-
+	SQL_QuoteString(SqlTuple, escaped_name, charsmax(escaped_name), name);
+	SQL_QuoteString(SqlTuple, escaped_ip, charsmax(escaped_ip), ip);
+	SQL_QuoteString(SqlTuple, escaped_sid, charsmax(escaped_sid), sid);
+	
 	if (SqlTuple) {
 		new data[1]; data[0] = id;
 		formatex(g_szTemp, charsmax(g_szTemp),
@@ -1497,7 +1501,7 @@ _showPlayerServices(id)
 			AND ((usef.type = '%d' AND usef.auth_data = '%s') \
 			OR (usef.type = '%d' AND usef.auth_data = '%s') \
 			OR (usef.type = '%d' AND usef.auth_data = '%s'))",
-			TABLE_PREFIX, TABLE_PREFIX, TABLE_PREFIX, g_serverId, TYPE_NICK, name, TYPE_IP, ip, TYPE_SID, sid
+			TABLE_PREFIX, TABLE_PREFIX, TABLE_PREFIX, g_serverId, TYPE_NICK, escaped_name, TYPE_IP, escaped_ip, TYPE_SID, escaped_sid
 		);
 	
 		SQL_ThreadQuery(SqlTuple, "showPlayerServicesHandler", g_szTemp, data, sizeof data);
@@ -2136,11 +2140,6 @@ stock bool:is_steam(id)
 	}
 	
 	return false;
-}
-
-stock escapeQuotes(string[], string_len)
-{	
-	replace_all(string, string_len, "'", "\'");
 }
 
 stock get_sms_cost(const number[])

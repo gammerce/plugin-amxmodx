@@ -1,7 +1,8 @@
 FROM cm2network/steamcmd
 
+ARG BASE_URL
+ARG CSTRIKE_URL
 ARG metamod_version=1.20
-ARG amxmod_version=1.8.2
 
 # Install unzip
 USER root
@@ -33,8 +34,8 @@ ADD server/files/plugins.ini /home/steam/dedicated/cstrike/addons/metamod/plugin
 # ADD files/dproto.cfg /opt/hlds/cstrike/dproto.cfg
 
 # Install AMX mod X
-RUN curl -sqL "http://www.amxmodx.org/release/amxmodx-$amxmod_version-base-linux.tar.gz" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
-RUN curl -sqL "http://www.amxmodx.org/release/amxmodx-$amxmod_version-cstrike-linux.tar.gz" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
+RUN curl -sqL "${BASE_URL}" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
+RUN curl -sqL "${CSTRIKE_URL}" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
 
 # Add shopsms
 RUN sed -i '1s/^/sklep_sms.amxx debug\n/' /home/steam/dedicated/cstrike/addons/amxmodx/configs/plugins.ini
