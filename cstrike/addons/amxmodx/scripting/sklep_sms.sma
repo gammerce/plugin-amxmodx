@@ -1986,10 +1986,13 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
    		return false;
    	}
 
+	// Clear response array
+	setc(g_responses[RequestId], MAX_RESPONSE, 0);
 	g_requestsInProgress[requestId] = true;
 	data[RequestId] = requestId;
 	data[RequestPlayerId] = playerId;
-	format(data[RequestCallback], MAX_FUNCTION + 1, callback);
+	formatex(data[RequestCallback], MAX_FUNCTION, callback);
+
    	newHeaders = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded; charset=UTF-8");
    	data[RequestHeaders] = newHeaders;
    	
@@ -2009,10 +2012,17 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 
 @responseWrite(const data[], const size, const nmemb, const requestId)
 {
-	// We want to get "nmemb" chars from "data", because sometime there is some noise at the end od "data"
-	format(g_responses[requestId], min(nmemb, MAX_RESPONSE), data);
+	new iLen = strlen(g_responses[requestId]);
+	new max_length = MAX_RESPONSE - iLen;
 
-	// tell curl how many bytes we handled
+	if (max_length < nmemb) {
+		_log("Response too big error | %s", data);
+	}
+
+	// We want to get "nmemb" chars from "data", because sometime there is some noise at the end od "data"
+	formatex(g_responses[requestId][iLen], min(nmemb, max_length), data);
+
+	// Tell curl how many bytes we handled
 	return size * nmemb;
 }
 
@@ -2022,10 +2032,6 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 		new szError[128];
 		curl_easy_strerror(code, szError, charsmax(szError));
 		_log("CURL error: %d %s", code, szError);
-	}
-
-	if (strlen(g_responses[data[RequestId]]) >= MAX_RESPONSE) {
-		_log("Response too big error | %s", g_responses[data[RequestId]]);
 	}
 
 	new statusCode;
