@@ -1491,16 +1491,16 @@ _showPlayerServices(id)
 		return;
 	}
 		
-	new name[MAX_NAME + 1], sid[MAX_SID + 1], ip[MAX_IP + 1];
-	new escaped_name[MAX_NAME * 2 + 1], escaped_sid[MAX_SID * 2 + 1], escaped_ip[MAX_IP * 2 + 1];
-	get_user_name(id, name, charsmax(name));
-	get_user_ip(id, ip, charsmax(ip), true);
-	get_user_authid(id, sid, charsmax(sid));
+	new escaped_name[MAX_NAME * 2 + 1], escaped_ip[MAX_IP * 2 + 1], escaped_sid[MAX_SID * 2 + 1];
 	
-	SQL_QuoteString(SqlTuple, escaped_name, charsmax(escaped_name), name);
-	SQL_QuoteString(SqlTuple, escaped_ip, charsmax(escaped_ip), ip);
-	SQL_QuoteString(SqlTuple, escaped_sid, charsmax(escaped_sid), sid);
+	get_user_name(id, escaped_name, charsmax(escaped_name));
+	get_user_ip(id, escaped_ip, charsmax(escaped_ip), true);
+	get_user_authid(id, escaped_sid, charsmax(escaped_sid));
 	
+	escape_quotes(escaped_name, charsmax(escaped_name));
+	escape_quotes(escaped_ip, charsmax(escaped_ip));
+	escape_quotes(escaped_sid, charsmax(escaped_sid));
+
 	if (SqlTuple) {
 		new data[1]; data[0] = id;
 		formatex(g_szTemp, charsmax(g_szTemp),
@@ -2156,6 +2156,11 @@ stock bool:is_steam(id)
 	}
 	
 	return false;
+}
+
+stock escape_quotes(string[], string_len)
+{
+	replace_all(string, string_len, "'", "\'");
 }
 
 stock get_sms_cost(const number[])
