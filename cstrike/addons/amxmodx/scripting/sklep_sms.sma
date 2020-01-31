@@ -707,48 +707,58 @@ public addUsersToGlobalArray()
 		set_task(0.1, "addUsersToGlobalArray");
 		return;
 	}
-	
-	// Potrzebujemy drugiej tablicy, zeby elementy z amxbansa mialy takie samo id
-	new Array:users, Array:users2;
-	users = ArrayCreate(e_PlayerFlags);
-	users2 = ArrayCreate(e_PlayerFlags);
+
+	// We want to persist order on the global admins list!
+	// We clone players flags. Then we iterate over admins stored in global admins storage.
+	// 1. If there is the same entry in our players flags list and in the global storage,
+	// then we join them into one entry and store it in the global_users. User is removed
+	// from the local_users. 
+	// 2. If entry exists only in the global storage, then we simply copy it to global_users.
+	// Now we put local_users and global_users into the global admins storage.
+
+	new Array:users, Array:joined_users;
+	local_users = ArrayCreate(e_PlayerFlags);
+	global_users = ArrayCreate(e_PlayerFlags);
 	
 	for (new i = 0; i < ArraySize(g_playersFlags); ++i) {
 		new player_flags[e_PlayerFlags];
 		ArrayGetArray(g_playersFlags, i, player_flags);
-		ArrayPushArray(users, player_flags);
+		ArrayPushArray(local_users, player_flags);
 	}
 	
 	for (new i = 0; i < admins_num(); ++i) {
-		new player_flags[e_PlayerFlags], name_bak[33];
+		new global_player[e_PlayerFlags], global_player_name[33];
 		
-		admins_lookup(i, AdminProp_Auth, player_flags[pfPLAYER], 32);
-		copy(name_bak, charsmax(name_bak), player_flags[pfPLAYER]);
-		strtolower(name_bak);
+		admins_lookup(i, AdminProp_Auth, global_player[pfPLAYER], 32);
+		copy(global_player_name, charsmax(global_player_name), global_player[pfPLAYER]);
+		strtolower(global_player_name);
 		
-		admins_lookup(i, AdminProp_Password, player_flags[pfPASSWORD], MAX_PASSWORD);
+		admins_lookup(i, AdminProp_Password, global_player[pfPASSWORD], MAX_PASSWORD);
 		
-		player_flags[pfTYPE] = admins_lookup(i, AdminProp_Flags);
-		player_flags[pfFLAGS] = admins_lookup(i, AdminProp_Access);
+		global_player[pfTYPE] = admins_lookup(i, AdminProp_Flags);
+		global_player[pfFLAGS] = admins_lookup(i, AdminProp_Access);
 		
-		new l = 0, p = ArraySize(users)-1, s;
+		new l = 0, p = ArraySize(local_users)-1, s;
 		while (l <= p) {
-			new player_flags2[e_PlayerFlags];
+			new local_player[e_PlayerFlags];
 			s = (l + p) / 2;
 			
-			ArrayGetArray(users, s, player_flags2);
-			strtolower(player_flags2[pfPLAYER]);
-			if (equali(name_bak, player_flags2[pfPLAYER]) && player_flags[pfTYPE] == player_flags2[pfTYPE]) {
-				// Zostawiamy haslo AMXBansa
-				player_flags[pfFLAGS] |= player_flags2[pfFLAGS];
-				ArrayPushArray(users2, player_flags);
-				ArrayDeleteItem(users, s);
+			ArrayGetArray(local_users, s, local_player);
+			strtolower(local_player[pfPLAYER]);
+			if (global_player[pfTYPE] == local_player[pfTYPE] && equali(global_player_name, local_player[pfPLAYER])) {
+				// Leave global password
+				global_player[pfFLAGS] |= local_player[pfFLAGS];
+				ArrayPushArray(global_users, global_player);
+				ArrayDeleteItem(local_users, s);
 				break;
 			}
-			else if (strcmp(name_bak, player_flags2[pfPLAYER]) > 0) {
+			else if (strcmp(global_player_name, local_player[pfPLAYER]) > 0) {
 				l = s + 1;
 			}
-			else if (equali(name_bak, player_flags2[pfPLAYER]) && _getOrderOfType(player_flags[pfTYPE]) > _getOrderOfType(player_flags2[pfTYPE])) {
+			else if (
+				_getOrderOfType(global_player[pfTYPE]) > _getOrderOfType(local_player[pfTYPE]) &&
+				equali(global_player_name, local_player[pfPLAYER])
+			) {
 				l = s + 1;
 			}
 			else {
@@ -757,19 +767,19 @@ public addUsersToGlobalArray()
 		}
 		
 		if (p < l) {
-			ArrayPushArray(users2, player_flags);
+			ArrayPushArray(global_users, global_player);
 		}
 	}
+
 	admins_flush();
-	
-	for (new i = 0; i < ArraySize(users2); ++i) {
+	for (new i = 0; i < ArraySize(global_users); ++i) {
 		new player_flags[e_PlayerFlags];
-		ArrayGetArray(users2, i, player_flags);
+		ArrayGetArray(global_users, i, player_flags);
 		admins_push(player_flags[pfPLAYER], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
 	}
-	for (new i = 0; i < ArraySize(users); ++i) {
+	for (new i = 0; i < ArraySize(local_users); ++i) {
 		new player_flags[e_PlayerFlags];
-		ArrayGetArray(users, i, player_flags);
+		ArrayGetArray(local_users, i, player_flags);
 		admins_push(player_flags[pfPLAYER], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
 	}
 }
