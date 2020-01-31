@@ -716,7 +716,7 @@ public addUsersToGlobalArray()
 	// 2. If entry exists only in the global storage, then we simply copy it to global_users.
 	// Now we put local_users and global_users into the global admins storage.
 
-	new Array:users, Array:joined_users;
+	new Array:local_users, Array:global_users;
 	local_users = ArrayCreate(e_PlayerFlags);
 	global_users = ArrayCreate(e_PlayerFlags);
 	
