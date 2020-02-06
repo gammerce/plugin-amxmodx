@@ -49,7 +49,7 @@ const MAX_FULL_IP = MAX_IP + MAX_PORT + 1; // ip + semicolon + port
 const MAX_URL_HOST = 128;
 const MAX_URL_PATH = 384;
 const MAX_URL = MAX_URL_HOST + MAX_URL_PATH;
-const MAX_HEADERS = 128;
+const MAX_HEADER = 128;
 const MAX_BODY = 384;
 const MAX_FUNCTION = 128;
 const TYPE_NICK = 1<<0;
@@ -1314,7 +1314,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 			u_password[MAX_PASSWORD * 2 + 1], u_sms_code[MAX_CODE * 2 + 1];
 		
 		new sign[34], sign_body[1 + charsmax(auth_data) + MAX_CODE + charsmax(g_randomKey) + 1];
-		new header[MAX_HEADERS + 1];
+		new header[MAX_HEADER + 1];
 
 		// Pobieramy dane o usludze
 		ArrayGetArray(g_services, which_service[id], service);
@@ -1355,6 +1355,8 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 
 		formatex(header, charsmax(header), "Authorization: %s", steam_id);
 		headers = curl_slist_append(headers, header);
+		headers = curl_slist_append(headers, "Accept: aaplication/assoc");
+
 		
 		formatex(body, charsmax(body),
 			"sign=%s&service_id=%s&type=%d&auth_data=%s&password=%s&method=%s&server_id=%d&payment_platform_id=%d&sms_code=%s&price_id=%d&ip=%s",
@@ -1384,13 +1386,10 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 	
 	new szText[128], szPositive[3], szWarnings[256];
 
-	getXMLValue(content, "text", szText, charsmax(szText));
-	getXMLValue(content, "positive", szPositive, charsmax(szPositive));
-	getXMLValue(content, "warnings", szWarnings, charsmax(szWarnings));
+	getField(content, "text", szText, charsmax(szText));
+	getField(content, "positive", szPositive, charsmax(szPositive));
+	getField(content, "warnings", szWarnings, charsmax(szWarnings));
 	
-	trim(szText);
-	trim(szWarnings);
-
 	if (!strlen(szText)) {
 		log_amx("Invalid response: %s", content);
 	}
@@ -1642,7 +1641,7 @@ _createShopSmsConfigFile()
 _validateLicense()
 {
 	new curl_slist: headers;
-	new header[MAX_HEADERS + 1];
+	new header[MAX_HEADER + 1];
 	new body[MAX_BODY + 1];
 	
 	{
@@ -1655,6 +1654,7 @@ _validateLicense()
 			g_licenseToken
 		);
 		headers = curl_slist_append(headers, header);
+		headers = curl_slist_append(headers, "Accept: aaplication/assoc");
 
 		formatex(body, charsmax(body),
 			"url=%s:%s&name=%s&version=%s&signature=%d&platform_version=%s",
@@ -1700,8 +1700,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 
 	if (statusCode == 403) {
 		new text[128 + 1];
-		getXMLValue(content, "text", text, charsmax(text));
-		trim(text);
+		getField(content, "text", text, charsmax(text));
 		_errorForbidden(text);
 		return;
 	}
@@ -1712,8 +1711,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	}
 
 	new text[32 + 1];
-	getXMLValue(content, "text", text, charsmax(text));
-	trim(text);
+	getField(content, "text", text, charsmax(text));
 
 	if (!equal(text, "ok")) {
 		_log("Invalid license validation response | %s", content);
@@ -1721,21 +1719,20 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 		return;
 	}
 
-	new szSignature[16], signature;
-	getXMLValue(content, "signature", szSignature, charsmax(szSignature));
-	signature = str_to_num(szSignature);
+	new szSignature[16];
+	getField(content, "signature", szSignature, charsmax(szSignature));
 
-	if (signature != g_signature) {
+	if (str_to_num(szSignature) != g_signature) {
 		_errorForbidden();
 		return;
 	}
 
 	new footer[2];
-	getXMLValue(content, "footer", footer, charsmax(footer));
+	getField(content, "footer", footer, charsmax(footer));
 	g_footer = str_to_num(footer) ? true : false;
 	
 	g_shopRegistered = true;
-	log_amx("Walidacja licencji zostala zakonczona pomyslnie");
+	log_amx("Walidacja licencji zostala zakonczona pomyslnie.");
 }
 
 //
@@ -2230,22 +2227,6 @@ stock matchRegex(const text[], const pattern[], output[], len, group = 0)
 	
 	_log("Regex error. Pattern: %s, Error: %s, Reg: %d", pattern, error, reg);
 	return false;
-}
-
-stock getXMLValue(const szText[], const tag[], output[], len)
-{	
-	new temp[64], textStart, textEnd;
-	
-	formatex(temp, charsmax(temp), "<%s>", tag);
-	textStart = contain(szText, temp);
-	
-	formatex(temp, charsmax(temp), "</%s>", tag);
-	textEnd = contain(szText, temp);
-	
-	if (textStart >= 0) {
-		new tag_len = 2 + strlen(tag);
-		copy(output, min(len, textEnd - textStart - tag_len), szText[textStart + tag_len]);
-	}
 }
 
 // TODO Does not work nice with polish characters
