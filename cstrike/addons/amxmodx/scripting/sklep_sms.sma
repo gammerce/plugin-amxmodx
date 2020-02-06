@@ -20,6 +20,7 @@ forward amxx_admin_access(id, flags, timestamp);
 // ID zadan
 #define TASK_KEEP_INFO_SMS 2000
 #define TASK_ASSIGN_PLAYER_FLAGS 5000
+#define TASK_DISPLAY_LOADING 6000
 #define TASK_KEEP_DISPLAYING_MENU 8000
 
 // Klawisze ktore mozna uzyc w menu
@@ -376,9 +377,12 @@ public loadSettingsHandler(FailState, Handle:Query, Error[], Errorcode)
 _loadServerConfig()
 {
 	new url[MAX_URL + 1];
+	new curl_slist: headers;
+
+	headers = curl_slist_append(headers, "Accept: application/assoc");
 	formatex(url, charsmax(url), "%s/api/server/config?key=%s&ip=%s&port=%s&version=%s", g_shopPageUrl, g_randomKeyMD5, g_serverIp, g_serverPort, VERSION);
 
-	if (!makeRequest("GET", url, curl_slist:0, "", "onLoadServerConfigResponse")) {
+	if (!makeRequest("GET", url, headers, "", "onLoadServerConfigResponse")) {
 		_errorConfigFailed(999);
 	}
 }
@@ -1355,8 +1359,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 
 		formatex(header, charsmax(header), "Authorization: %s", steam_id);
 		headers = curl_slist_append(headers, header);
-		headers = curl_slist_append(headers, "Accept: aaplication/assoc");
-
+		headers = curl_slist_append(headers, "Accept: application/assoc");
 		
 		formatex(body, charsmax(body),
 			"sign=%s&service_id=%s&type=%d&auth_data=%s&password=%s&method=%s&server_id=%d&payment_platform_id=%d&sms_code=%s&price_id=%d&ip=%s",
@@ -1373,6 +1376,10 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 
 public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, playerId)
 {
+	if (!is_user_connected(playerId)) {
+		return;
+	}
+
 	if (code != CURLE_OK) {
 		_log("Zakup nie zostal sfinalizowany z nieznanych powodow. Error: %d", code);
 		client_print_color(playerId, Red, "^4[%s] ^1Zakup ^3nie zostal sfinalizowany ^1z nieznanych powodow. Error: %d", PREFIX, code);
@@ -1380,33 +1387,26 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 	}
 
 	if (statusCode >= 300) {
-		client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrocilo bledny http code.", PREFIX);
+		client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrocilo bledny HTTP code: %d", PREFIX, statusCode);
 		return;
 	}
 	
-	new szText[128], szPositive[3], szWarnings[256];
-
-	getField(content, "text", szText, charsmax(szText));
-	getField(content, "positive", szPositive, charsmax(szPositive));
-	getField(content, "warnings", szWarnings, charsmax(szWarnings));
+	new status[128], text[128];
+	getField(content, "status", status, charsmax(status));
+	getField(content, "text", text, charsmax(text));
 	
-	if (!strlen(szText)) {
+	if (strlen(text)) {
+		client_print_color(playerId, Red, "^4[%s] ^1%s", PREFIX, text);
+	} else {
 		log_amx("Invalid response: %s", content);
+		client_print_color(playerId, Red, "^4[%s] ^1Wystapil blad. Brak odpowiedzi z serwera.", PREFIX);
 	}
 
-	_handlePurchaseServiceResponse(playerId, szText, str_to_num(szPositive), szWarnings);
-}
+	if (equal(status, "warnings")) {
+		new szWarnings[256];
+		getField(content, "warnings", szWarnings, charsmax(szWarnings));
 
-_handlePurchaseServiceResponse(id, const message[], positive, const szWarnings[])
-{
-	if (! is_user_connected(id)) {
-		return;
-	}
-	
-	client_print_color(id, Red, "^4[%s] ^1%s", PREFIX, strlen(message) ? message : "Wystapil blad. Brak odpowiedzi z serwera.");
-	
-	if (strlen(szWarnings)) {
-		format(g_szTemp, charsmax(g_szTemp), 
+		formatex(g_szTemp, charsmax(g_szTemp), 
 			"<html>\
 			<head><meta http-equiv=^"Content-Type^" content=^"text/html^" charset=^"UTF-8^"></head>\
 			<body style=^"background-color: #0f0f0f; color: #ccc; font-size: 14px;^">\
@@ -1416,14 +1416,15 @@ _handlePurchaseServiceResponse(id, const message[], positive, const szWarnings[]
 			</html>", 
 			szWarnings
 		);
-		show_motd(id, g_szTemp, "Bledy przy zakupie uslugi");
+		show_motd(playerId, g_szTemp, "Bledy przy zakupie uslugi");
 	}
-	
-	// Wystapil jakis blad, wiec przerywamy
-	if (! positive) {
-		return;
+	else if (equal(status, "purchased")) {
+		_handleServicePurchase(playerId);
 	}
-		
+}
+
+_handleServicePurchase(id)
+{
 	new ret, forward_handle, service[e_Service], price[e_Price];
 	ArrayGetArray(g_services, which_service[id], service);
 	ArrayGetArray(g_prices, which_price[id], price);
@@ -1450,7 +1451,8 @@ _handlePurchaseServiceResponse(id, const message[], positive, const szWarnings[]
 		formatex(g_szTemp, charsmax(g_szTemp), 
 			"<html><body style=^"background-color: #0f0f0f; color: #ccc; font-size: 14px;^"><center><br /><br />\
 			<h1>Wykupiles/as usluge: <span style=^"color: red^">%s</span><br /><br />\
-			Aby usluga dziala, dodaj wpis do pliku <i>config.cfg</>: <span style=^"color: #3399ff^">setinfo _ss ^"%s^"</span><br /><br />\
+			Aby usluga dziala, dodaj wpis do pliku <i>config.cfg</>:<br />\
+			<span style=^"color: #3399ff^">setinfo _ss ^"%s^"</span><br /><br />\
 			W razie problemow skontaktuj sie z nami.\
 			</center></body></html>", 
 			service[sNAME], b_passwords[id]
@@ -1477,78 +1479,84 @@ _handlePurchaseServiceResponse(id, const message[], positive, const szWarnings[]
 	}
 }
 
-//
-// ----------------------------------------------- OTHER ----------------------------------------------------
-//
-
-/**
- * Wyswietlenie obecnych uslug gracza
- */
 _showPlayerServices(id)
 {
 	if (!is_user_connected(id)) {
 		return;
 	}
-		
-	new escaped_name[MAX_NAME * 2 + 1], escaped_ip[MAX_IP * 2 + 1], escaped_sid[MAX_SID * 2 + 1];
 	
-	get_user_name(id, escaped_name, charsmax(escaped_name));
-	get_user_ip(id, escaped_ip, charsmax(escaped_ip), true);
-	get_user_authid(id, escaped_sid, charsmax(escaped_sid));
+	new name[MAX_NAME + 1],	ip[MAX_IP + 1], steam_id[MAX_SID + 1];
+	new escaped_name[MAX_NAME * 2 + 1], escaped_ip[MAX_IP * 2 + 1], escaped_steam_id[MAX_SID * 2 + 1];
 	
-	escape_quotes(escaped_name, charsmax(escaped_name));
-	escape_quotes(escaped_ip, charsmax(escaped_ip));
-	escape_quotes(escaped_sid, charsmax(escaped_sid));
+	get_user_name(id, name, charsmax(name));
+	get_user_ip(id, ip, charsmax(ip), true);
+	get_user_authid(id, steam_id, charsmax(steam_id));
 
-	if (SqlTuple) {
-		new data[1]; data[0] = id;
-		formatex(g_szTemp, charsmax(g_szTemp),
-			"SELECT s.name AS `service`, FROM_UNIXTIME(us.expire) AS `expire`, us.expire AS `expire_num` FROM `%suser_service` AS us \
-			INNER JOIN `%suser_service_extra_flags` AS usef ON usef.us_id = us.id \
-			INNER JOIN `%sservices` AS s ON us.service = s.id \
-			WHERE usef.server = '%d' \
-			AND ((usef.type = '%d' AND usef.auth_data = '%s') \
-			OR (usef.type = '%d' AND usef.auth_data = '%s') \
-			OR (usef.type = '%d' AND usef.auth_data = '%s'))",
-			TABLE_PREFIX, TABLE_PREFIX, TABLE_PREFIX, g_serverId, TYPE_NICK, escaped_name, TYPE_IP, escaped_ip, TYPE_SID, escaped_sid
-		);
-	
-		SQL_ThreadQuery(SqlTuple, "showPlayerServicesHandler", g_szTemp, data, sizeof data);
+	StringURLEncode(name, escaped_name, charsmax(escaped_name));
+	StringURLEncode(ip, escaped_ip, charsmax(escaped_ip));
+	StringURLEncode(steam_id, escaped_steam_id, charsmax(escaped_steam_id));
+
+	new url[MAX_URL + 1];
+	new curl_slist: headers;
+
+	headers = curl_slist_append(headers, "Accept: application/assoc");
+	formatex(
+		url, charsmax(url),
+		"%s/api/server/user_services?key=%s&server_id=%d&nick=%s&ip=%s&steam_id=%s",
+		g_shopPageUrl, g_randomKeyMD5, g_serverId, escaped_name, escaped_ip, escaped_steam_id
+	);
+
+	if (makeRequest("GET", url, headers, "", "onShowPlayerServicesResponse", id)) {
+		set_task(0.0, "task_displayLoading", TASK_DISPLAY_LOADING + id);
+	} else {
+		client_print_color(id, Red, "^4[%s] ^1Niestety, nie udalo sie uzyskac informacji o Twoich uslugach.", PREFIX);
 	}
 }
 
-public showPlayerServicesHandler(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
+public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode, playerId)
 {
-	new id = data[0];
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		client_print_color(id, Red, "^4[%s] ^1Niestety, nie udalo sie pozyskac informacji o Twoich uslugach.", PREFIX);
+	if (!is_user_connected(playerId)) {
+		return;
+	}
+	
+	if (code != CURLE_OK) {
+		client_print_color(playerId, Red, "^4[%s] ^1Niestety, nie udalo sie uzyskac informacji o Twoich uslugach. Error: %d", PREFIX, code);
 		return;
 	}
 
+	if (statusCode >= 300) {
+		client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrocilo bledny HTTP code: %d.", PREFIX, statusCode);
+		return;
+	}
+
+	new key[256];
 	new menu = menu_create("Twoje obecne uslugi", "showPlayerServices_handler");
 
-	while (SQL_MoreResults(Query)) {
-		new service[MAX_SERVICE_ID + 1], expire[32 + 1], item_text[128];
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "service"), service, charsmax(service));
+	formatex(key, charsmax(key), "c");
+	if (!getField(content, key, g_szTemp, charsmax(g_szTemp))) {
+		log_amx("Invalid user services response. | %s", content);
+	}
+	new count = str_to_num(g_szTemp);
+
+	for (new i = 0; i < count; ++i) {
+		new service_name[MAX_SERVICE_ID + 1], expire[32 + 1], item_text[128];
 		
-		if (SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "expire_num")) == -1) {
-			copy(expire, charsmax(expire), "Nigdy");
-		} else {
-			SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "expire"), expire, charsmax(expire));
-		}
-		
-		formatex(item_text, charsmax(item_text), "%s - wygasa: %s", service, expire);
+		formatex(key, charsmax(key), "%d.s", i);
+		getField(content, key, service_name, charsmax(service_name));
+
+		formatex(key, charsmax(key), "%d.e", i);
+		getField(content, key, expire, charsmax(expire));
+
+		formatex(item_text, charsmax(item_text), "%s - wygasa: %s", service_name, expire);
 		menu_additem(menu, item_text);
-		
-		SQL_NextRow(Query);
 	}
 	
 	if (menu_items(menu)) {
 		menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
-		menu_display(id, menu);
+		menu_display(playerId, menu);
 	}
 	else {
-		client_print_color(id, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s.", PREFIX, sklep_komenda);
+		client_print_color(playerId, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s.", PREFIX, sklep_komenda);
 	}
 }
 
@@ -1556,6 +1564,10 @@ public showPlayerServices_handler(id, menu, item)
 {	
 	menu_destroy(menu);
 }
+
+//
+// ----------------------------------------------- OTHER ----------------------------------------------------
+//
 
 _logActor(id, const format[], any:...)
 {
@@ -1654,7 +1666,7 @@ _validateLicense()
 			g_licenseToken
 		);
 		headers = curl_slist_append(headers, header);
-		headers = curl_slist_append(headers, "Accept: aaplication/assoc");
+		headers = curl_slist_append(headers, "Accept: application/assoc");
 
 		formatex(body, charsmax(body),
 			"url=%s:%s&name=%s&version=%s&signature=%d&platform_version=%s",
@@ -1730,7 +1742,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	new footer[2];
 	getField(content, "footer", footer, charsmax(footer));
 	g_footer = str_to_num(footer) ? true : false;
-	
+
 	g_shopRegistered = true;
 	log_amx("Walidacja licencji zostala zakonczona pomyslnie.");
 }
@@ -1960,6 +1972,15 @@ _make_error(message[]) {
 // ------------------------------------------------- HTTP Requests ----------------------------------------------------
 //
 
+public task_displayLoading(task_id)
+{
+	new id = task_id - TASK_DISPLAY_LOADING;
+
+	if (is_user_connected(id)) {
+		client_print_color(id, Red, "^4[%s] ^1Ladowanie...", PREFIX);
+	}
+}
+
 /**
  * Make HTTP request
  *
@@ -2155,11 +2176,6 @@ stock bool:is_steam(id)
 	return false;
 }
 
-stock escape_quotes(string[], string_len)
-{
-	replace_all(string, string_len, "'", "\'");
-}
-
 stock get_sms_cost(const number[])
 {	
 	if (strlen(number) < 4) {
@@ -2229,7 +2245,6 @@ stock matchRegex(const text[], const pattern[], output[], len, group = 0)
 	return false;
 }
 
-// TODO Does not work nice with polish characters
 stock StringURLEncode(const szInput[], szOutput[], const iLen)
 {	
 	static const HEXCHARS[ 16 ] = {
