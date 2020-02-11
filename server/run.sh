@@ -33,4 +33,4 @@ CSTRIKE_URL="${CSTRKE_VERSIONS[${BUILD_VERSION}]}"
 # RUN
 IMAGE_NAME="cs16"
 docker build -t ${IMAGE_NAME} --build-arg BASE_URL="${BASE_URL}" --build-arg CSTRIKE_URL="${CSTRIKE_URL}" -f "$DIR/server/Dockerfile" . \
-&& docker run --rm -it -p 27015:27015 --network sklepsms_default --name sklepsms_cs16 ${IMAGE_NAME}
+&& docker run --rm -it -p 27015:27015 --network sklep-sms_default --name sklepsms_cs16 ${IMAGE_NAME}

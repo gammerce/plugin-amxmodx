@@ -64,7 +64,10 @@ new forwrdClientAccess;
 
 // CVARs
 new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_host, cvar_user, cvar_pass, cvar_db, cvar_server_ip, cvar_silent_command;
-new sklep_komenda[MAX_COMMAND + 1], przeladuj_komenda[MAX_COMMAND + 1], uslugi_komenda[MAX_COMMAND + 1], show_info;
+new show_info;
+new Array:g_shopCommands,
+	Array:g_serviceListCommands,
+	Array:g_reloadCommands;
 
 // MySQL
 new const TABLE_PREFIX[] = "ss_";
@@ -175,7 +178,7 @@ public plugin_precache()
 	_createShopSmsConfigFile();
 	
 	cvar_on 	= register_cvar("sklepsms_on", "1");
-	cvar_sklep 	= register_cvar("sklepsms_sklep_komenda", "/sklepsms");
+	cvar_sklep 	= register_cvar("sklepsms_sklep_komenda", "/sklepsms,/shopsms");
 	cvar_przeladuj 	= register_cvar("sklepsms_przeladuj_komenda", "/przeladuj");
 	cvar_uslugi 	= register_cvar("sklepsms_uslugi_komenda", "/uslugi");
 	cvar_show_info 	= register_cvar("sklepsms_info", "1");
@@ -198,6 +201,9 @@ public plugin_precache()
 	g_smses = ArrayCreate(e_SMS);
 	g_services = ArrayCreate(e_Service);
 	g_prices = ArrayCreate(e_Price);
+	g_shopCommands = ArrayCreate(MAX_COMMAND + 1);
+	g_serviceListCommands = ArrayCreate(MAX_COMMAND + 1);
+	g_reloadCommands = ArrayCreate(MAX_COMMAND + 1);
 }
 
 public plugin_init()
@@ -269,9 +275,15 @@ public plugin_end()
 
 _loadCvars()
 {
-	get_pcvar_string(cvar_sklep, sklep_komenda, charsmax(sklep_komenda));
-	get_pcvar_string(cvar_przeladuj, przeladuj_komenda, charsmax(przeladuj_komenda));
-	get_pcvar_string(cvar_uslugi, uslugi_komenda, charsmax(uslugi_komenda));
+	get_pcvar_string(cvar_sklep, g_szTemp, charsmax(g_szTemp));
+	explode(g_szTemp, ',', g_shopCommands, MAX_COMMAND);
+
+	get_pcvar_string(cvar_przeladuj, g_szTemp, charsmax(g_szTemp));
+	explode(g_szTemp, ',', g_reloadCommands, MAX_COMMAND);
+	
+	get_pcvar_string(cvar_uslugi, g_szTemp, charsmax(g_szTemp));
+	explode(g_szTemp, ',', g_serviceListCommands, MAX_COMMAND);
+	
 	show_info = get_pcvar_num(cvar_show_info);
 	
 	get_pcvar_string(cvar_host, sql_host, charsmax(sql_host));
@@ -308,16 +320,16 @@ public amxx_admin_access(id, flags, timestamp)
 
 public sayHook(id)
 {	
-	new tekst[32];
-	read_argv(1, tekst, charsmax(tekst));
+	new text[MAX_COMMAND + 1];
+	read_argv(1, text, charsmax(text));
 	
-	if (equali(tekst, sklep_komenda)) {
+	if (_matchCommand(text, g_shopCommands)) {
 		_openShopMenu(id);
 	}
-	else if (equali(tekst, przeladuj_komenda)) {
+	else if (_matchCommand(text, g_reloadCommands)) {
 		command_reassignPlayersFlags(id);
 	}
-	else if (equali(tekst, uslugi_komenda)) {
+	else if (_matchCommand(text, g_serviceListCommands)) {
 		_showPlayerServices(id);
 	}
 	
@@ -1556,7 +1568,9 @@ public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode,
 		menu_display(playerId, menu);
 	}
 	else {
-		client_print_color(playerId, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s.", PREFIX, sklep_komenda);
+		new command[MAX_COMMAND + 1];
+		_getFirstCommand(g_shopCommands, command, charsmax(command));
+		client_print_color(playerId, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s.", PREFIX, command);
 	}
 }
 
@@ -1593,7 +1607,9 @@ _log(const format[], any:...)
 public displayCommercial()
 {	
 	if (get_playersnum() > 1) {
-		client_print_color(0, Red, "^4[%s] ^1Zapraszamy wszystkich do korzystania ze ^3sklepiku! ^1Wystarczy wpisac: ^4%s", PREFIX, sklep_komenda);
+		new command[MAX_COMMAND + 1];
+		_getFirstCommand(g_shopCommands, command, charsmax(command));
+		client_print_color(0, Red, "^4[%s] ^1Zapraszamy wszystkich do korzystania ze ^3sklepiku! ^1Wystarczy wpisac: ^4%s", PREFIX, command);
 	}
 }
 
@@ -1612,13 +1628,13 @@ _createShopSmsConfigFile()
 		iLen += formatex(szText[iLen], iMax-iLen, "// 0 - wylaczony^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_on ^"1^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie w celu wyswietlenia menu sklepiku^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_sklep_komenda ^"/sklepsms^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Lista komend oddzielonych przecinkiem, ktore mozna wpisac na chacie, w celu wyswietlenia menu sklepiku^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_sklep_komenda ^"/sklepsms,/shopsms^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie w celu przeladowania flag wykupionych w sklepiku^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Lista komend oddzielonych przecinkiem, ktore mozna wpisac na chacie, w celu przeladowania flag wykupionych w sklepiku^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_przeladuj_komenda ^"/przeladuj^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Komenda, ktora nalezy wpisac na chacie, aby zobaczyc swoje aktywne uslugi^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Lista komend oddzielonych przecinkiem, ktore mozna wpisac na chacie, aby zobaczyc swoje aktywne uslugi^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_uslugi_komenda ^"/uslugi^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// Czy po uzyciu powyzszych komend wyswietla sie one w chacie^n");
@@ -2165,6 +2181,29 @@ vc_md5(const szString[], md5buffer[34])
 
 // --------------------------------------------------------- Stocks ------------------------------------------------------------
 
+stock bool:_matchCommand(const text[], Array:commands)
+{
+	for (new i = 0; i < ArraySize(commands); ++i) {
+		new command[MAX_COMMAND + 1];
+		ArrayGetString(commands, i, command, charsmax(command));
+
+		if (equali(text, command)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+stock _getFirstCommand(Array:commands, output[], maxlen)
+{
+	if (ArraySize(commands) == 0) {
+		formatex(output, maxlen, "");
+	} else {
+		ArrayGetString(commands, 0, output, maxlen);
+	}
+}
+
 stock bool:is_steam(id)
 {	
 	new auth[32];
@@ -2286,4 +2325,20 @@ stock StringURLEncode(const szInput[], szOutput[], const iLen)
 	szOutput[ iFLen ] = 0;
 	
 	return iFLen;
+}
+
+/**
+ * https://amxx.pl/topic/43223-explode/
+ */
+stock explode(const string[], const character, Array:output, maxlen)
+{
+	new len = strlen(string);
+	new oLen = 0;
+	
+	while (oLen < len)
+	{
+		new text[128 + 1];
+		oLen += (1 + copyc(text, maxlen, string[oLen], character));
+		ArrayPushString(output, text);
+	}
 }
