@@ -5,7 +5,7 @@
 
 #pragma library "shop_sms_const"
 
-#define VERSION "3.9.0"
+#define VERSION "3.9.1-rc.1"
 
 #define PREFIX "SKLEP-SMS"
 
