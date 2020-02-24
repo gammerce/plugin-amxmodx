@@ -1,6 +1,5 @@
 #include <amxmodx>
 #include <amxmisc>
-#include <sqlx>
 #include <curl>
 #include <regex>
 #include <shop_sms_const>
@@ -19,7 +18,6 @@ forward amxx_admin_access(id, flags, timestamp);
 
 // ID zadan
 #define TASK_KEEP_INFO_SMS 2000
-#define TASK_ASSIGN_PLAYER_FLAGS 5000
 #define TASK_DISPLAY_LOADING 6000
 #define TASK_KEEP_DISPLAYING_MENU 8000
 
@@ -32,7 +30,6 @@ new const LOG_FILE[] = "sklep_sms.log";
 
 const MAX_COMMAND = 32;
 const MAX_CONTACT = 64;
-const MAX_RANDOM_KEY = 32;
 const MAX_FLAGS = 26;
 const MAX_SERVER_NAME = 128;
 const MAX_SERVICE_TAG = 16;
@@ -42,10 +39,12 @@ const MAX_PASSWORD = 32;
 const MAX_DESCRIPTION = 28;
 const MAX_CODE = 16;
 const MAX_NUMBER = 16;
+const MAX_AUTH_DATA = 32;
 const MAX_NAME = 32;
 const MAX_SID = 18;
 const MAX_IP = 15;
 const MAX_PORT = 8;
+const MAX_TOKEN = 32;
 const MAX_FULL_IP = MAX_IP + MAX_PORT + 1; // ip + semicolon + port
 const MAX_URL_HOST = 128;
 const MAX_URL_PATH = 384;
@@ -57,24 +56,16 @@ const TYPE_NICK = 1<<0;
 const TYPE_IP = 1<<1;
 const TYPE_SID = 1<<2;
 
-new bool:g_AmxbansExists = false;
-
 // FORWARDs
 new forwrdClientAccess;
 
 // CVARs
-new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_host, cvar_user, cvar_pass, cvar_db, cvar_server_ip, cvar_silent_command;
+new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_shop_url, cvar_token, cvar_server_ip, cvar_silent_command;
 new show_info;
 new Array:g_shopCommands,
 	Array:g_serviceListCommands,
 	Array:g_reloadCommands;
 
-// MySQL
-new const TABLE_PREFIX[] = "ss_";
-new Handle:SqlTuple;
-new bool:g_sqlConnected = false;
-new sql_host[MAX_URL_HOST + 1], sql_user[32], sql_pass[32], sql_db[32];
-new const all_flags[MAX_FLAGS + 1] = "abcdefghijklmnopqrstuyvwxz";
 new g_szTemp[4096];
 
 // Server
@@ -85,13 +76,10 @@ new g_serverIp[MAX_IP + 1],
 	g_configPath[128];
 
 // Server config
-new g_serverId,
-	g_currency[16],
-	g_smsPlatformId,
+new g_currency[16],
 	g_contact[MAX_CONTACT + 1], 
-	g_randomKey[MAX_RANDOM_KEY + 1], 
-	g_randomKeyMD5[34], 
-	g_shopPageUrl[MAX_URL + 1],
+	g_shopUrl[MAX_URL + 1],
+	g_serverToken[MAX_TOKEN + 1],
 	g_smsText[MAX_SMS_TEXT + 1],
 	Float:g_vat,
 	g_accountsSteamIds[4096] = "",
@@ -132,7 +120,7 @@ enum e_Price {
 new Array:g_prices;
 
 enum e_PlayerFlags {
-	pfPLAYER[33], 
+	pfPLAYER[MAX_AUTH_DATA+1], 
 	pfFLAGS, 
 	pfPASSWORD[MAX_PASSWORD+2], 
 	pfTYPE
@@ -148,7 +136,7 @@ new which_service[33],
 	b_types[33];
 
 // Requests
-const MAX_RESPONSE = 4096;
+const MAX_RESPONSE = 8192;
 const MAX_REQUESTS_COUNT = 5;
 new g_requestCounter = 0,
 	g_responses[MAX_REQUESTS_COUNT][MAX_RESPONSE + 1],
@@ -182,10 +170,8 @@ public plugin_precache()
 	cvar_przeladuj 	= register_cvar("sklepsms_przeladuj_komenda", "/przeladuj");
 	cvar_uslugi 	= register_cvar("sklepsms_uslugi_komenda", "/uslugi");
 	cvar_show_info 	= register_cvar("sklepsms_info", "1");
-	cvar_host 	= register_cvar("sklepsms_host", "localhost");
-	cvar_user 	= register_cvar("sklepsms_user", "root");
-	cvar_pass 	= register_cvar("sklepsms_pass", "");
-	cvar_db 	= register_cvar("sklepsms_db", "");
+	cvar_shop_url 	= register_cvar("sklepsms_url", "");
+	cvar_token 	= register_cvar("sklepsms_token", "");
 	cvar_server_ip	= register_cvar("sklepsms_server_ip", "");
 	cvar_silent_command	= register_cvar("sklepsms_ciche_komendy", "0");
 	
@@ -214,7 +200,7 @@ public plugin_init()
 	register_concmd("Podaj_Kod_Zwrotny", "onSmsCodeEntered");
 	register_concmd("ssnick_Podaj_Haslo", "onNickPasswordEntered");
 	register_concmd("ssip_Podaj_Haslo", "onIpPasswordEntered");
-	register_concmd("sklepsms_reloaddata", "command_loadPlayersServices");
+	register_concmd("sklepsms_reloaddata", "command_loadPlayersFlags");
 	register_concmd("sklepsms_reloadusers", "command_reassignPlayersFlags");
 	
 	register_clcmd("say", "sayHook");
@@ -228,7 +214,8 @@ public plugin_init()
 	forwrdClientAccess = CreateMultiForward("ss_client_access", ET_IGNORE, FP_CELL, FP_CELL);
 }
 
-public plugin_cfg() {
+public plugin_cfg()
+{
 	// Blad przy tworzeniu (brak uprawnien)
 	if (!file_exists(g_configPath)) {
 		_invalidPath(0, g_configPath);
@@ -242,15 +229,6 @@ public plugin_cfg() {
 	
 	_loadCvars();
 	
-	SqlTuple = SQL_MakeDbTuple(sql_host, sql_user, sql_pass, sql_db);
-	if (! SqlTuple) {
-		_error51();
-	}
-
-	#if defined SQL_SetCharset
-	SQL_SetCharset(SqlTuple, "utf8mb4");
-	#endif
-	
 	// Get server ip
 	new fullIp[MAX_FULL_IP];
 	get_pcvar_string(cvar_server_ip, fullIp, charsmax(fullIp));
@@ -262,19 +240,24 @@ public plugin_cfg() {
 	
 	split(fullIp, g_serverIp, charsmax(g_serverIp), g_serverPort, charsmax(g_serverPort), ":");
 
-	_loadPlayersServices(false);
-	_loadSettings();
-}
-
-public plugin_end()
-{	
-	if (SqlTuple) {
-		SqlTuple = Empty_Handle;
-	}
+	_loadServerConfig();
 }
 
 _loadCvars()
 {
+	get_pcvar_string(cvar_shop_url, g_shopUrl, charsmax(g_shopUrl));
+	get_pcvar_string(cvar_token, g_serverToken, charsmax(g_serverToken));
+	
+	// Remove trailing slash
+	if (strlen(g_shopUrl) && g_shopUrl[strlen(g_shopUrl) - 1] == '/') {
+		g_shopUrl[strlen(g_shopUrl) - 1] = '^0';
+	}
+
+	if (!strlen(g_shopUrl) || !strlen(g_serverToken)) {
+		_errorNoShopCreds();
+		return;
+	}
+
 	get_pcvar_string(cvar_sklep, g_szTemp, charsmax(g_szTemp));
 	explode(g_szTemp, ',', g_shopCommands, MAX_COMMAND);
 
@@ -285,15 +268,14 @@ _loadCvars()
 	explode(g_szTemp, ',', g_serviceListCommands, MAX_COMMAND);
 	
 	show_info = get_pcvar_num(cvar_show_info);
-	
-	get_pcvar_string(cvar_host, sql_host, charsmax(sql_host));
-	get_pcvar_string(cvar_user, sql_user, charsmax(sql_user));
-	get_pcvar_string(cvar_pass, sql_pass, charsmax(sql_pass));
-	get_pcvar_string(cvar_db, sql_db, charsmax(sql_db));
 }
 
 public client_authorized(id)
-{	
+{
+	if (!g_playersLoaded) {
+		log_amx("Player [%d] joined before server config was loaded. It may result in a lack of proper permissions.");
+	}
+
 	_assignPlayerFlags(id);
 }
 
@@ -304,7 +286,6 @@ public client_putinserver(id)
 
 public amxbans_sql_initialized()
 {	
-	g_AmxbansExists = true;
 	_reassignPlayersFlags();
 }
 
@@ -340,59 +321,13 @@ public sayHook(id)
 // ----------------------------------------- SERVER CONFIGURATION --------------------------------------------
 //
 
-_loadSettings()
-{
-	formatex(g_szTemp, charsmax(g_szTemp),
-		"SELECT * FROM `%ssettings` \
-		WHERE `key` IN ('shop_url', 'random_key')",
-		TABLE_PREFIX
-	);
-	SQL_ThreadQuery(SqlTuple, "loadSettingsHandler", g_szTemp);
-}
-
-public loadSettingsHandler(FailState, Handle:Query, Error[], Errorcode)
-{	
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	while (SQL_MoreResults(Query)) {
-		new key[128], value[256];
-		
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "key"), key, charsmax(key));
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "value"), value, charsmax(value));
-
-		if (equali(key, "shop_url")) {
-			copy(g_shopPageUrl, charsmax(g_shopPageUrl), value);
-			
-			// Remove trailing slash
-			if (strlen(g_shopPageUrl) && g_shopPageUrl[strlen(g_shopPageUrl) - 1] == '/') {
-				g_shopPageUrl[strlen(g_shopPageUrl) - 1] = '^0';
-			}
-			
-			if (! strlen(g_shopPageUrl)) {
-				_errorNoShopUrl();
-				return;
-			}
-		}
-		else if (equali(key, "random_key")) {
-			copy(g_randomKey, charsmax(g_randomKey), value);
-			vc_md5(g_randomKey, g_randomKeyMD5); // Hashujemy random key
-		}
-		
-		SQL_NextRow(Query);
-	}
-	
-	_loadServerConfig();
-}
-
 _loadServerConfig()
 {
 	new url[MAX_URL + 1];
 	new curl_slist: headers;
 
 	headers = curl_slist_append(headers, "Accept: application/assoc");
-	formatex(url, charsmax(url), "%s/api/server/config?key=%s&ip=%s&port=%s&version=%s", g_shopPageUrl, g_randomKeyMD5, g_serverIp, g_serverPort, VERSION);
+	formatex(url, charsmax(url), "%s/api/server/config?token=%s&version=%s&player_flags=1&language=polish", g_shopUrl, g_serverToken, VERSION);
 
 	if (!makeRequest("GET", url, headers, "", "onLoadServerConfigResponse")) {
 		_errorConfigFailed(999);
@@ -406,7 +341,7 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 		return;
 	}
 
-	if (statusCode == 404) {
+	if (statusCode == 404 || statusCode == 400) {
 		_errorNoServer();
 		return;
 	}
@@ -430,10 +365,6 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 	
 	_validateLicense();
 
-	getField(content, "id", g_szTemp, charsmax(g_szTemp));
-	g_serverId = str_to_num(g_szTemp);
-	getField(content, "sms_platform_id", g_szTemp, charsmax(g_szTemp));
-	g_smsPlatformId = str_to_num(g_szTemp);
 	getField(content, "sms_text", g_smsText, charsmax(g_smsText));
 	getField(content, "steam_ids", g_accountsSteamIds, charsmax(g_accountsSteamIds));
 	getField(content, "currency", g_currency, charsmax(g_currency));
@@ -444,13 +375,17 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 	_extractSmsNumbers(content);
 	_extractPrices(content);
 	_extractServices(content);
+	_extractPlayersFlags(content);
 
 	_stopPlugins();
+
+	_checkLoadedPlayersFlags();
 	_checkLoadedServices();
 }
 
 _extractSmsNumbers(const content[])
 {
+	ArrayClear(g_smses);
 	new key[256];
 
 	formatex(key, charsmax(key), "sn.c");
@@ -471,6 +406,7 @@ _extractSmsNumbers(const content[])
 
 _extractPrices(const content[])
 {
+	ArrayClear(g_prices);
 	new key[256];
 
 	formatex(key, charsmax(key), "pr.c");
@@ -501,6 +437,7 @@ _extractPrices(const content[])
 
 _extractServices(const content[])
 {
+	ArrayClear(g_services);
 	new key[256];
 
 	formatex(key, charsmax(key), "se.c");
@@ -546,6 +483,50 @@ _extractServices(const content[])
 	}
 }
 
+_extractPlayersFlags(const content[])
+{
+	ArrayClear(g_playersFlags);
+	new key[256];
+
+	formatex(key, charsmax(key), "pf.c");
+	getField(content, key, g_szTemp, charsmax(g_szTemp));
+	new count = str_to_num(g_szTemp);
+
+	for (new i = 0; i < count; ++i) {
+		new player_flags[e_PlayerFlags];
+		
+		formatex(key, charsmax(key), "pf.%d.t", i);
+		getField(content, key, g_szTemp, charsmax(g_szTemp));
+		new type = str_to_num(g_szTemp);
+
+		formatex(key, charsmax(key), "pf.%d.a", i);
+		getField(content, key, player_flags[pfPLAYER], MAX_AUTH_DATA);
+
+		formatex(key, charsmax(key), "pf.%d.p", i);
+		getField(content, key, player_flags[pfPASSWORD], MAX_PASSWORD);
+
+		formatex(key, charsmax(key), "pf.%d.f", i);
+		getField(content, key, g_szTemp, charsmax(g_szTemp));
+
+		for (new i = 0; i < strlen(g_szTemp); ++i) {
+			player_flags[pfFLAGS] |= read_flags(g_szTemp[i]);
+		}
+		
+		switch (type) {
+			case TYPE_SID: player_flags[pfTYPE] = FLAG_AUTHID|FLAG_NOPASS;
+			case TYPE_IP: player_flags[pfTYPE] = FLAG_IP;
+			default: player_flags[pfTYPE] = FLAG_NICK|FLAG_KICK;
+		}
+
+		if (player_flags[pfFLAGS] != 0) {
+			ArrayPushArray(g_playersFlags, player_flags);
+		}
+	}
+
+	g_playersLoaded = true;
+	_reassignPlayersFlags();
+}
+
 _stopPlugins()
 {
 	new service_id[MAX_SERVICE_ID + 1];
@@ -567,16 +548,43 @@ _stopPlugins()
 	}
 }
 
+_loadPlayersFlags()
+{
+	new url[MAX_URL + 1];
+	new curl_slist: headers;
+
+	headers = curl_slist_append(headers, "Accept: application/assoc");
+	formatex(url, charsmax(url), "%s/api/server/players_flags?token=%s&language=polish", g_shopUrl, g_serverToken, VERSION);
+
+	makeRequest("GET", url, headers, "", "onLoadPlayersFlagsResponse");
+}
+
+public onLoadPlayersFlagsResponse(const content[], CURLcode: code, statusCode, playerId)
+{
+	if (code != CURLE_OK) {
+		return;
+	}
+
+	if (statusCode == 400) {
+		_errorNoServer();
+		return;
+	}
+
+	if (statusCode >= 300) {
+		_log("Invalid players flags response HTTP code | %d", statusCode);
+		return;
+	}
+	
+	_extractPlayersFlags(content);
+}
+
 //
 // --------------------------------------------- PLAYERS FLAGS ------------------------------------------------
 //
 
-/**
- * Funkcja wczytujaca z bazy ponownie dane graczy
- */
-public command_loadPlayersServices()
+public command_loadPlayersFlags()
 {	
-	_loadPlayersServices(true);
+	_loadPlayersFlags();
 }
 
 public command_reassignPlayersFlags(id)
@@ -594,133 +602,26 @@ public command_reassignPlayersFlags(id)
 	}
 }
 
-_loadPlayersServices(bool:reloadAmxbans) {
-	// Czyscimy dotychczasowe dane
-	ArrayClear(g_playersFlags);
-	g_playersLoaded = false;
-	
-	if (SqlTuple) {
-		new iLen = 0, iMax = charsmax(g_szTemp);
-
-		iLen += formatex(g_szTemp[iLen], iMax - iLen,
-			"SELECT f.type, f.auth_data, f.password, \
-			(f.a > UNIX_TIMESTAMP() OR f.a = '-1') AS `a`, \
-			(f.b > UNIX_TIMESTAMP() OR f.b = '-1') AS `b`, \
-			(f.c > UNIX_TIMESTAMP() OR f.c = '-1') AS `c`, \
-			(f.d > UNIX_TIMESTAMP() OR f.d = '-1') AS `d`, \
-			(f.e > UNIX_TIMESTAMP() OR f.e = '-1') AS `e`, \
-			(f.f > UNIX_TIMESTAMP() OR f.f = '-1') AS `f`, \
-			(f.g > UNIX_TIMESTAMP() OR f.g = '-1') AS `g`, \
-			(f.h > UNIX_TIMESTAMP() OR f.h = '-1') AS `h`, "
-		);
-		
-		iLen += formatex(g_szTemp[iLen], iMax - iLen,
-			"(f.i > UNIX_TIMESTAMP() OR f.i = '-1') AS `i`, \
-			(f.j > UNIX_TIMESTAMP() OR f.j = '-1') AS `j`, \
-			(f.k > UNIX_TIMESTAMP() OR f.k = '-1') AS `k`, \
-			(f.l > UNIX_TIMESTAMP() OR f.l = '-1') AS `l`, \
-			(f.m > UNIX_TIMESTAMP() OR f.m = '-1') AS `m`, \
-			(f.n > UNIX_TIMESTAMP() OR f.n = '-1') AS `n`, \
-			(f.o > UNIX_TIMESTAMP() OR f.o = '-1') AS `o`, \
-			(f.p > UNIX_TIMESTAMP() OR f.p = '-1') AS `p`, "
-		);
-		
-		iLen += formatex(g_szTemp[iLen], iMax - iLen,
-			"(f.q > UNIX_TIMESTAMP() OR f.q = '-1') AS `q`, \
-			(f.r > UNIX_TIMESTAMP() OR f.r = '-1') AS `r`, \
-			(f.s > UNIX_TIMESTAMP() OR f.s = '-1') AS `s`, \
-			(f.t > UNIX_TIMESTAMP() OR f.t = '-1') AS `t`, \
-			(f.u > UNIX_TIMESTAMP() OR f.u = '-1') AS `u`, \
-			(f.y > UNIX_TIMESTAMP() OR f.y = '-1') AS `y`, \
-			(f.v > UNIX_TIMESTAMP() OR f.v = '-1') AS `v`, \
-			(f.w > UNIX_TIMESTAMP() OR f.w = '-1') AS `w`, \
-			(f.x > UNIX_TIMESTAMP() OR f.x = '-1') AS `x`, \
-			(f.z > UNIX_TIMESTAMP() OR f.z = '-1') AS `z` "
-		);
-		
-		iLen += formatex(g_szTemp[iLen], iMax - iLen,
-			"FROM `%splayers_flags` AS f \
-			JOIN `%sservers` AS s ON s.id = f.server \
-			WHERE s.ip = '%s' \
-			AND s.port = '%s' \
-			ORDER BY f.auth_data, f.type DESC",
-			TABLE_PREFIX, TABLE_PREFIX, g_serverIp, g_serverPort
-		);
-	
-		new data[1]; data[0] = reloadAmxbans; // Przeladuj liste adminow w amxbans
-		SQL_ThreadQuery(SqlTuple, "loadPlayersServicesHandler", g_szTemp, data, sizeof data);
-	}
-}
-
-public loadPlayersServicesHandler(FailState, Handle:Query, Error[], Errorcode, data[], data_size)
-{
-	if (_checkForSQLErrors(Query, FailState, Error, Errorcode) == PLUGIN_HANDLED) {
-		return;
-	}
-
-	while (SQL_MoreResults(Query))
-	{
-		new player_flags[e_PlayerFlags], type;
-		type = SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "type"));
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "auth_data"), player_flags[pfPLAYER], 32);
-		SQL_ReadResult(Query, SQL_FieldNameToNum(Query, "password"), player_flags[pfPASSWORD], MAX_PASSWORD);
-		
-		for (new i = 0; i < strlen(all_flags); ++i) {
-			new temp[4];
-			formatex(temp, charsmax(temp), "%c", all_flags[i]);
-			if (SQL_ReadResult(Query, SQL_FieldNameToNum(Query, temp))) {
-				player_flags[pfFLAGS] |= read_flags(temp);
-			}
-		}
-		
-		switch (type) {
-			case TYPE_SID: player_flags[pfTYPE] = FLAG_AUTHID|FLAG_NOPASS;
-			case TYPE_IP: player_flags[pfTYPE] = FLAG_IP;
-			default: player_flags[pfTYPE] = FLAG_NICK|FLAG_KICK;
-		}
-		
-		// Dodanie do tablicy
-		if (player_flags[pfFLAGS] != 0) {
-			ArrayPushArray(g_playersFlags, player_flags);
-		}
-		
-		SQL_NextRow(Query);
-	}
-	
-	log_amx("Zaladowano %d uslug graczy.", ArraySize(g_playersFlags));
-	g_playersLoaded = true;
-	
-	if (data[0] && g_AmxbansExists) { // Przeladuj dane w amxbans, a tym samym uruchom komende dodawania danych do tablicy globalnej uprawnien
-		server_cmd("amx_reloadadmins");
-	}
-	else {
-		_reassignPlayersFlags();
-	}
-}
-
 /**
  * Reload players flags and assign them again
  */
 _reassignPlayersFlags()
 {
-	addUsersToGlobalArray();
+	_addUsersToGlobalArray();
 
 	for (new i = 1; i <= get_maxplayers(); ++i) {
-		if (! is_user_connected(i)) {
-			continue;
+		if (is_user_connected(i)) {
+			_assignPlayerFlags(i);
 		}
-			
-		_assignPlayerFlags(i);
 	}
 }
 
 /**
  * Funkcja sluzaca do dodania graczy do tablicy globalnej przechowujacej dane uprawnien graczy
  */
-public addUsersToGlobalArray()
+_addUsersToGlobalArray()
 {
-	if (!g_playersLoaded) { // Dane uzytkownikow nie zostaly jeszcze zaladowane
-		set_task(0.1, "addUsersToGlobalArray");
+	if (!g_playersLoaded) {
 		return;
 	}
 
@@ -800,18 +701,9 @@ public addUsersToGlobalArray()
 	}
 }
 
-public task_assignPlayerFlags(id)
-{
-	_assignPlayerFlags(id-TASK_ASSIGN_PLAYER_FLAGS);
-}
-
 _assignPlayerFlags(id)
 {	
 	if (! g_playersLoaded) {
-		if (! task_exists(TASK_ASSIGN_PLAYER_FLAGS+id)) {
-			set_task(0.1, "task_assignPlayerFlags", TASK_ASSIGN_PLAYER_FLAGS+id);
-		}
-			
 		return;
 	}
 	
@@ -899,11 +791,6 @@ _openShopMenu(id)
 	
 	if (g_blocked) {
 		client_print_color(id, Red, "^4[%s] ^1Nie mozna otworzyc sklepu z powodu bledow ze sklepem. Zobacz logi.", PREFIX);
-	}
-	
-	if (!g_sqlConnected) {
-		client_print_color(id, Red, "^4[%s] ^1Nie polaczono z baza danych.", PREFIX);
-		return;
 	}
 	
 	if (!ArraySize(g_services)) {
@@ -1329,7 +1216,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		new u_service_id[MAX_SERVICE_ID * 2 + 1], u_auth_data[64 + 1], u_steam_id[64 + 1],
 			u_password[MAX_PASSWORD * 2 + 1], u_sms_code[MAX_CODE * 2 + 1];
 		
-		new sign[34], sign_body[1 + charsmax(auth_data) + MAX_CODE + charsmax(g_randomKey) + 1];
+		new sign[34], sign_body[1 + charsmax(auth_data) + MAX_CODE + charsmax(g_serverToken) + 1];
 		new header[MAX_HEADER + 1];
 
 		// Pobieramy dane o usludze
@@ -1342,20 +1229,15 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 			case TYPE_NICK: get_user_name(id, auth_data, charsmax(auth_data));
 		}
 	
-		// Jezeli usluga nie jest wykupowana na nickpass, ippass, sid, to pobieramy nick
+		// Get username for services without type - e.g. using OTHER service module 
 		if (!strlen(auth_data)) {
 			get_user_name(id, auth_data, charsmax(auth_data));
 		}
-		
-		// Get user's IP
+
 		get_user_ip(id, ip, charsmax(ip), true);
-		
-		// Get user's SteamID
 		get_user_authid(id, steam_id, charsmax(steam_id));
-		
 		ArrayGetArray(g_prices, which_price[id], price);
-	
-		// Encode url params
+
 		StringURLEncode(service[sID], u_service_id, charsmax(u_service_id));
 		StringURLEncode(auth_data, u_auth_data, charsmax(u_auth_data));
 		StringURLEncode(b_passwords[id], u_password, charsmax(u_password));
@@ -1365,7 +1247,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		// Calculate body sign
 		formatex(sign_body, charsmax(sign_body),
 			"%d#%s#%s#%s",
-			b_types[id], auth_data, sms_code, g_randomKey
+			b_types[id], auth_data, sms_code, g_serverToken
 		);
 		vc_md5(sign_body, sign);
 
@@ -1374,11 +1256,11 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		headers = curl_slist_append(headers, "Accept: application/assoc");
 		
 		formatex(body, charsmax(body),
-			"sign=%s&service_id=%s&type=%d&auth_data=%s&password=%s&method=%s&server_id=%d&payment_platform_id=%d&sms_code=%s&price_id=%d&ip=%s",
-			sign, u_service_id, b_types[id], u_auth_data, u_password, method, g_serverId, g_smsPlatformId, u_sms_code, price[pID], ip
+			"sign=%s&service_id=%s&type=%d&auth_data=%s&password=%s&method=%s&sms_code=%s&price_id=%d&ip=%s",
+			sign, u_service_id, b_types[id], u_auth_data, u_password, method, u_sms_code, price[pID], ip
 		);
 		
-		formatex(url, charsmax(url), "%s/api/server/purchase?key=%s&language=polish", g_shopPageUrl, g_randomKeyMD5);
+		formatex(url, charsmax(url), "%s/api/server/purchase?token=%s&language=polish", g_shopUrl, g_serverToken);
 	}
 
 	if (!makeRequest("POST", url, headers, body, "onPurchaseServiceResponse", id)) {
@@ -1415,7 +1297,7 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 	}
 
 	if (equal(status, "warnings")) {
-		new szWarnings[256];
+		new szWarnings[512];
 		getField(content, "warnings", szWarnings, charsmax(szWarnings));
 
 		formatex(g_szTemp, charsmax(g_szTemp), 
@@ -1482,12 +1364,12 @@ _handleServicePurchase(id)
 		show_motd(id, g_szTemp, "Informacje dotyczace uslugi");
 	}
 	
-	client_print_color(id, Blue, "^4[%s] ^1Prawidlowo kupiono ^4%s^1: %s", PREFIX, service[sNAME], quantity);
+	client_print_color(id, Blue, "^4[%s] ^1Prawidlowo zakupiono ^4%s^1: %s", PREFIX, service[sNAME], quantity);
 	
 	// Jezeli usluga ma flagi do ustawienia to wczytujemy ponownie dane z bazy
 	if (service[FLAGS]) {
 		// Musimy przeladowac z opoznieniem, aby dane uzytkownika zalapaly nowe haslo
-		set_task(2.0, "command_loadPlayersServices");
+		set_task(2.0, "command_loadPlayersFlags");
 	}
 }
 
@@ -1514,8 +1396,8 @@ _showPlayerServices(id)
 	headers = curl_slist_append(headers, "Accept: application/assoc");
 	formatex(
 		url, charsmax(url),
-		"%s/api/server/user_services?key=%s&server_id=%d&nick=%s&ip=%s&steam_id=%s",
-		g_shopPageUrl, g_randomKeyMD5, g_serverId, escaped_name, escaped_ip, escaped_steam_id
+		"%s/api/server/user_services?token=%s&nick=%s&ip=%s&steam_id=%s&language=polish",
+		g_shopUrl, g_serverToken, escaped_name, escaped_ip, escaped_steam_id
 	);
 
 	if (makeRequest("GET", url, headers, "", "onShowPlayerServicesResponse", id)) {
@@ -1645,19 +1527,13 @@ _createShopSmsConfigFile()
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// #########################^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// ###  Dane Bazy MySQL  ###^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// ###  Dane Sklepu  ###^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// #########################^n^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Adres IP^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_host ^"^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Adres URL sklepu^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_url ^"^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Uzytkownik^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_user ^"^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Haslo^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_pass ^"^"^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Nazwa bazy danych");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_db ^"^"");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Token serwera^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_token ^"^"^n");
 		write_file(g_configPath, szText);
 	}
 }
@@ -1767,35 +1643,6 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 // ------------------------------------------------- HELPERS ----------------------------------------------------
 //
 
-_checkForSQLErrors(Handle:Query, FailState, Error[], Errorcode)
-{	
-	g_sqlConnected = true;
-	
-	if (FailState != TQUERY_SUCCESS) {
-		if (FailState == TQUERY_QUERY_FAILED) {
-			_log("Nie mozna polaczyc sie z baza danych.");
-		}
-		else if (FailState == TQUERY_CONNECT_FAILED) {
-			_log("Zapytanie anulowane.");
-			g_sqlConnected = false;
-		}
-		
-		_log("Tresc bledu (%d): %s", Errorcode, Error);
-		
-		SQL_GetQueryString(Query, g_szTemp, charsmax(g_szTemp));
-		_log("Zapytanie: %s", g_szTemp);
-		
-		return PLUGIN_HANDLED;
-	}
-	
-	return PLUGIN_CONTINUE;
-}
-
-public IgnoreHandle(FailState, Handle:Query, Error[], Errorcode)
-{	
-	_checkForSQLErrors(Query, FailState, Error, Errorcode);
-}
-
 public keepDisplayingMenu(data[])
 {	
 	new id = data[0];
@@ -1811,6 +1658,15 @@ public keepDisplayingMenu(data[])
 	}
 			
 	set_task(0.1, "keepDisplayingMenu", TASK_KEEP_DISPLAYING_MENU + id, data, 2);
+}
+
+_checkLoadedPlayersFlags()
+{	
+	if (!ArraySize(g_playersFlags)) {
+		log_amx("Nie zaladowano zadnych uslug graczy.");
+	} else {
+		log_amx("Zaladowano %d uslug graczy.", ArraySize(g_playersFlags));
+	}
 }
 
 _checkLoadedServices()
@@ -1900,7 +1756,7 @@ _getPriceQuantity(price_index, service_index, output[], len)
 
 _canUseShop()
 {
-	return !g_blocked && g_shopRegistered && get_pcvar_num(cvar_on) && g_sqlConnected;
+	return !g_blocked && g_shopRegistered && get_pcvar_num(cvar_on);
 }
 
 _canPayWithWallet(id)
@@ -1959,7 +1815,7 @@ _errorConfigFailed(code) {
 }
 
 _errorNoServer() {
-	_make_error("Error 21 - Serwer nie znajduje sie nie liscie serwerow na stronie WWW.");
+	_make_error("Error 21 - Bledny token serwera.");
 }
 
 _errorOutdatedVersion() {
@@ -1971,13 +1827,8 @@ _errorConfigInvalidResponse() {
 	g_blocked = true;
 }
 
-_errorNoShopUrl() {
-	_make_error("Error 24 - Nie podano adresu sklepu w ustawieniach.");
-}
-
-// General
-_error51() {
-	_make_error("Error 51 - Nie udalo sie utworzyc uchwytu do bazy danych.");
+_errorNoShopCreds() {
+	_make_error("Error 24 - Nie podano danych sklepu: URL lub token.");
 }
 
 _make_error(message[]) {
