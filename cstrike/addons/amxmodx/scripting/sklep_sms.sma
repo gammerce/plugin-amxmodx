@@ -89,7 +89,7 @@ new g_currency[16],
 new bool:g_footer = true,
 	bool:g_blocked = false,
 	bool:g_validationAttempt = false,
-	bool:g_shopRegistered = false;
+	bool:g_licenseValidated = false;
 
 enum e_Service {
 	sID[MAX_SERVICE_ID + 1], 
@@ -200,7 +200,8 @@ public plugin_init()
 	register_concmd("Podaj_Kod_Zwrotny", "onSmsCodeEntered");
 	register_concmd("ssnick_Podaj_Haslo", "onNickPasswordEntered");
 	register_concmd("ssip_Podaj_Haslo", "onIpPasswordEntered");
-	register_concmd("sklepsms_reloaddata", "command_loadPlayersFlags");
+	register_concmd("sklepsms_reload", "command_reloadServerConfig");
+	register_concmd("sklepsms_reloaddata", "command_reloadPlayersFlags");
 	register_concmd("sklepsms_reloadusers", "command_reassignPlayersFlags");
 	
 	register_clcmd("say", "sayHook");
@@ -363,7 +364,10 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 		return;
 	}
 	
-	_validateLicense();
+	// Do not validate twice, in case of reloading server config
+	if (!g_licenseValidated) {
+		_validateLicense();
+	}
 
 	getField(content, "sms_text", g_smsText, charsmax(g_smsText));
 	getField(content, "steam_ids", g_accountsSteamIds, charsmax(g_accountsSteamIds));
@@ -582,7 +586,12 @@ public onLoadPlayersFlagsResponse(const content[], CURLcode: code, statusCode, p
 // --------------------------------------------- PLAYERS FLAGS ------------------------------------------------
 //
 
-public command_loadPlayersFlags()
+public command_reloadServerConfig()
+{
+	_loadServerConfig();
+}
+
+public command_reloadPlayersFlags()
 {	
 	_loadPlayersFlags();
 }
@@ -798,7 +807,7 @@ _openShopMenu(id)
 		return;
 	}
 	
-	if (!g_shopRegistered) {
+	if (!g_licenseValidated) {
 		client_print_color(id, Red, "^4[%s] ^1Nie udalo sie przeprowadzic walidacji licencji lub wystapil blad w zapytaniu do bazy danych.", PREFIX);
 		return;
 	}
@@ -1369,7 +1378,7 @@ _handleServicePurchase(id)
 	// Jezeli usluga ma flagi do ustawienia to wczytujemy ponownie dane z bazy
 	if (service[FLAGS]) {
 		// Musimy przeladowac z opoznieniem, aby dane uzytkownika zalapaly nowe haslo
-		set_task(2.0, "command_loadPlayersFlags");
+		set_task(2.0, "command_reloadPlayersFlags");
 	}
 }
 
@@ -1573,7 +1582,7 @@ _validateLicense()
 
 public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, playerId)
 {
-	g_shopRegistered = false;
+	g_licenseValidated = false;
 
 	if (g_validationAttempt) {
 		_errorForbidden();
@@ -1635,7 +1644,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	getField(content, "footer", footer, charsmax(footer));
 	g_footer = str_to_num(footer) ? true : false;
 
-	g_shopRegistered = true;
+	g_licenseValidated = true;
 	log_amx("Walidacja licencji zostala zakonczona pomyslnie.");
 }
 
@@ -1756,7 +1765,7 @@ _getPriceQuantity(price_index, service_index, output[], len)
 
 _canUseShop()
 {
-	return !g_blocked && g_shopRegistered && get_pcvar_num(cvar_on);
+	return !g_blocked && g_licenseValidated && get_pcvar_num(cvar_on);
 }
 
 _canPayWithWallet(id)
@@ -1882,7 +1891,7 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
    	}
 
 	// Clear response array
-	setc(g_responses[RequestId], MAX_RESPONSE, 0);
+	setc(g_responses[requestId], MAX_RESPONSE, 0);
 	g_requestsInProgress[requestId] = true;
 	data[RequestId] = requestId;
 	data[RequestPlayerId] = playerId;
