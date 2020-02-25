@@ -1,5 +1,5 @@
 #if defined _shop_sms_const_included
-	#endinput
+    #endinput
 #endif
 #define _shop_sms_const_included
 
