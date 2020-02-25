@@ -40,14 +40,14 @@ Wymusza przeładowanie usług wykupionych w sklepie
 #### sklepsms_on "1"
 Włącza (1) / wyłącza (0) sklep
 
-#### sklepsms_sklep_komenda "/sklepsms"
-[Komenda](https://github.com/gammerce/plugin-amxmodx#sklepsms), którą należy wpisać na chacie w celu wyświetlenia menu sklepu.
+#### sklepsms_sklep_komenda "/sklepsms,/shopsms"
+Lista [komend](https://github.com/gammerce/plugin-amxmodx#sklepsms) oddzielonych przecinkiem, które można wpisać na chacie, w celu wyświetlenia menu sklepu.
 
 #### sklepsms_przeladuj_komenda "/uslugi"
-[Komenda](https://github.com/gammerce/plugin-amxmodx#uslugi), którą należy wpisać na chacie w celu wyświetlenie usług wykupionych w sklepie.
+Lista [komend](https://github.com/gammerce/plugin-amxmodx#uslugi) oddzielonych przecinkiem, które można wpisać na chacie, w celu wyświetlenie usług wykupionych w sklepie.
 
 #### sklepsms_przeladuj_komenda "/przeladuj"
-[Komenda](https://github.com/gammerce/plugin-amxmodx#przeladuj), którą należy wpisać na chacie w celu przeładowania usług wykupionych w sklepie.
+Lista [komend](https://github.com/gammerce/plugin-amxmodx#przeladuj) oddzielonych przecinkiem, które można wpisać na chacie, w celu przeładowania usług wykupionych w sklepie.
 
 #### sklepsms_info "1"
 Czy wyswietlać informację o sklepie na chacie?
