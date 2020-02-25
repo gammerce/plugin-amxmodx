@@ -274,7 +274,7 @@ _loadCvars()
 public client_authorized(id)
 {
 	if (!g_playersLoaded) {
-		log_amx("Player [%d] joined before server config was loaded. It may result in a lack of proper permissions.");
+		log_amx("Player [%d] joined before server config was loaded. It may result in a lack of proper permissions.", id);
 	}
 
 	_assignPlayerFlags(id);
@@ -558,7 +558,7 @@ _loadPlayersFlags()
 	new curl_slist: headers;
 
 	headers = curl_slist_append(headers, "Accept: application/assoc");
-	formatex(url, charsmax(url), "%s/api/server/players_flags?token=%s&language=polish", g_shopUrl, g_serverToken, VERSION);
+	formatex(url, charsmax(url), "%s/api/server/players_flags?token=%s&language=polish", g_shopUrl, g_serverToken);
 
 	makeRequest("GET", url, headers, "", "onLoadPlayersFlagsResponse");
 }
