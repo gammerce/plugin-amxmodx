@@ -6,7 +6,7 @@
 #include <custom_color_chat>
 
 #pragma semicolon 1
-#pragma dynamic 65536
+#pragma dynamic 131072
 
 forward amxbans_sql_initialized(Handle:sqlTuple, dbPrefix[]);
 forward client_admin(id, flags);
@@ -136,7 +136,7 @@ new which_service[33],
 	b_types[33];
 
 // Requests
-const MAX_RESPONSE = 8192;
+const MAX_RESPONSE = 16384;
 const MAX_REQUESTS_COUNT = 5;
 new g_requestCounter = 0,
 	g_responses[MAX_REQUESTS_COUNT][MAX_RESPONSE + 1],
@@ -274,7 +274,7 @@ _loadCvars()
 public client_authorized(id)
 {
 	if (!g_playersLoaded) {
-		log_amx("Player [%d] joined before server config was loaded. It may result in a lack of proper permissions.", id);
+		_log("Player [%d] joined before server config was loaded. It may result in a lack of proper permissions.", id);
 	}
 
 	_assignPlayerFlags(id);
