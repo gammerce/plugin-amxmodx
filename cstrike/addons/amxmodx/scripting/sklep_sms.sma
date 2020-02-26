@@ -193,7 +193,7 @@ public plugin_precache()
 }
 
 public plugin_init()
-{	
+{
 	register_plugin("Sklep SMS", VERSION, "SeeK");
 	
 	register_menucmd(register_menuid("smsDetails"), KEYS, "smsDetails_handler");
@@ -217,15 +217,13 @@ public plugin_init()
 
 public plugin_cfg()
 {
-	// Blad przy tworzeniu (brak uprawnien)
-	if (!file_exists(g_configPath)) {
-		_invalidPath(0, g_configPath);
-	}
-		
-	// Ponowne wczytywanie confingu
 	if (file_exists(g_configPath)) {
+		// Ponowne wczytywanie confingu
 		server_cmd("exec %s", g_configPath);
 		server_exec();
+	} else {
+		// Blad przy tworzeniu (brak uprawnien)
+		_invalidPath(0, g_configPath);
 	}
 	
 	_loadCvars();
