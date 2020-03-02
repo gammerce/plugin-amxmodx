@@ -7,6 +7,8 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
+DIRECTORY=$(cd `dirname $0` && pwd)
+
 declare -A BASE_VERSIONS=(
 	["1.8.2"]="https://www.amxmodx.org/release/amxmodx-1.8.2-base-linux.tar.gz"
 	["1.8.3"]="https://www.amxmodx.org/amxxdrop/1.8/amxmodx-1.8.3-dev-git5201-base-linux.tar.gz"
@@ -33,4 +35,4 @@ CSTRIKE_URL="${CSTRKE_VERSIONS[${BUILD_VERSION}]}"
 # RUN
 IMAGE_NAME="cs16"
 docker build -t ${IMAGE_NAME} --build-arg BASE_URL="${BASE_URL}" --build-arg CSTRIKE_URL="${CSTRIKE_URL}" -f "$DIR/server/Dockerfile" . \
-&& docker run --rm -it -p 27015:27015 --network sklep-sms_default --name sklepsms_cs16 ${IMAGE_NAME}
+&& docker run --rm -it -p 27015:27015 --network sklep-sms_default --name sklepsms_cs16 -v "$DIRECTORY/storage/vault":"/home/steam/dedicated/cstrike/addons/amxmodx/data/vault" ${IMAGE_NAME}

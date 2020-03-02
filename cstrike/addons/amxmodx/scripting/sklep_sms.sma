@@ -2,6 +2,7 @@
 #include <amxmisc>
 #include <curl>
 #include <regex>
+#include <nvault>
 #include <shop_sms_const>
 #include <custom_color_chat>
 
@@ -16,15 +17,15 @@ forward amxx_admin_access(id, flags, timestamp);
 
 #define FLAG_NICK (1<<5)
 
-// ID zadan
+// Tasks ID
 #define TASK_KEEP_INFO_SMS 2000
 #define TASK_DISPLAY_LOADING 6000
 #define TASK_KEEP_DISPLAYING_MENU 8000
 
-// Klawisze ktore mozna uzyc w menu
+// Available menu keys
 #define KEYS (1<<0)|(1<<9) // Keys: 10
 
-// Logowanie danych
+// LOGS
 new const CFG_FILE[] = "sklep_sms.cfg";
 new const LOG_FILE[] = "sklep_sms.log";
 
@@ -41,7 +42,7 @@ const MAX_CODE = 16;
 const MAX_NUMBER = 16;
 const MAX_AUTH_DATA = 32;
 const MAX_NAME = 32;
-const MAX_SID = 18;
+const MAX_SID = 34;
 const MAX_IP = 15;
 const MAX_PORT = 8;
 const MAX_TOKEN = 32;
@@ -52,9 +53,18 @@ const MAX_URL = MAX_URL_HOST + MAX_URL_PATH;
 const MAX_HEADER = 128;
 const MAX_BODY = 384;
 const MAX_FUNCTION = 128;
+const MAX_CONFIG_KEY = 64;
+const MAX_NUMBER_LENGTH = 32;
+
 const TYPE_NICK = 1<<0;
 const TYPE_IP = 1<<1;
 const TYPE_SID = 1<<2;
+
+new g_szTemp[16384];
+
+// nVault
+new g_vaultHandle;
+new const VAULT_PLAYER_FLAGS_KEY[] = "player_flags";
 
 // FORWARDs
 new forwrdClientAccess;
@@ -62,11 +72,9 @@ new forwrdClientAccess;
 // CVARs
 new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_shop_url, cvar_token, cvar_server_ip, cvar_silent_command;
 new show_info;
-new Array:g_shopCommands,
-	Array:g_serviceListCommands,
-	Array:g_reloadCommands;
-
-new g_szTemp[4096];
+new Trie:g_shopCommands,
+	Trie:g_serviceListCommands,
+	Trie:g_reloadCommands;
 
 // Server
 new g_serverIp[MAX_IP + 1],
@@ -82,7 +90,7 @@ new g_currency[16],
 	g_serverToken[MAX_TOKEN + 1],
 	g_smsText[MAX_SMS_TEXT + 1],
 	Float:g_vat,
-	g_accountsSteamIds[4096] = "",
+	Trie:g_accountsSteamIds,
 	g_licenseToken[63];
 
 // License
@@ -120,9 +128,9 @@ enum e_Price {
 new Array:g_prices;
 
 enum e_PlayerFlags {
-	pfPLAYER[MAX_AUTH_DATA+1], 
+	pfAUTH[MAX_AUTH_DATA+1], 
 	pfFLAGS, 
-	pfPASSWORD[MAX_PASSWORD+2], 
+	pfPASSWORD[MAX_PASSWORD+1], 
 	pfTYPE
 };
 new Array:g_playersFlags;
@@ -137,7 +145,7 @@ new which_service[33],
 
 // Requests
 const MAX_RESPONSE = 16384;
-const MAX_REQUESTS_COUNT = 5;
+const MAX_REQUESTS_COUNT = 4;
 new g_requestCounter = 0,
 	g_responses[MAX_REQUESTS_COUNT][MAX_RESPONSE + 1],
 	bool:g_requestsInProgress[MAX_REQUESTS_COUNT];
@@ -187,9 +195,10 @@ public plugin_precache()
 	g_smses = ArrayCreate(e_SMS);
 	g_services = ArrayCreate(e_Service);
 	g_prices = ArrayCreate(e_Price);
-	g_shopCommands = ArrayCreate(MAX_COMMAND + 1);
-	g_serviceListCommands = ArrayCreate(MAX_COMMAND + 1);
-	g_reloadCommands = ArrayCreate(MAX_COMMAND + 1);
+	g_shopCommands = TrieCreate();
+	g_serviceListCommands = TrieCreate();
+	g_reloadCommands = TrieCreate();
+	g_accountsSteamIds = TrieCreate();
 }
 
 public plugin_init()
@@ -200,9 +209,9 @@ public plugin_init()
 	register_concmd("Podaj_Kod_Zwrotny", "onSmsCodeEntered");
 	register_concmd("ssnick_Podaj_Haslo", "onNickPasswordEntered");
 	register_concmd("ssip_Podaj_Haslo", "onIpPasswordEntered");
-	register_concmd("sklepsms_reload", "command_reloadServerConfig");
-	register_concmd("sklepsms_reloaddata", "command_reloadPlayersFlags");
-	register_concmd("sklepsms_reloadusers", "command_reassignPlayersFlags");
+	register_concmd("ss_reload", "command_reloadServerConfig");
+	register_concmd("ss_reload_players_flags", "command_reloadPlayersFlags");
+	register_concmd("ss_reassign_players_flags", "command_reassignPlayersFlags");
 	
 	register_clcmd("say", "sayHook");
 	register_clcmd("say_team", "sayHook");
@@ -213,16 +222,21 @@ public plugin_init()
 
 	g_signature = random_num(1, 99999999);
 	forwrdClientAccess = CreateMultiForward("ss_client_access", ET_IGNORE, FP_CELL, FP_CELL);
+
+	g_vaultHandle = nvault_open("shopsms");
+	if (g_vaultHandle == INVALID_HANDLE) {
+		_log("Couldn't open 'shopsms' nvault.");
+	}
 }
 
 public plugin_cfg()
 {
 	if (file_exists(g_configPath)) {
-		// Ponowne wczytywanie confingu
+		// Read config once again
 		server_cmd("exec %s", g_configPath);
 		server_exec();
 	} else {
-		// Blad przy tworzeniu (brak uprawnien)
+		// File was not created (probably due to invalid permissions)
 		_invalidPath(0, g_configPath);
 	}
 	
@@ -232,7 +246,7 @@ public plugin_cfg()
 	new fullIp[MAX_FULL_IP];
 	get_pcvar_string(cvar_server_ip, fullIp, charsmax(fullIp));
 
-	// Brak ip w cvarach
+	// No IP in CVARs
 	if (!strlen(fullIp)) {
 		get_user_ip(0, fullIp, charsmax(fullIp), false);
 	}
@@ -240,6 +254,16 @@ public plugin_cfg()
 	split(fullIp, g_serverIp, charsmax(g_serverIp), g_serverPort, charsmax(g_serverPort), ":");
 
 	_loadServerConfig();
+	_restorePlayerFlagsFromVault();
+}
+
+public plugin_end()
+{
+	nvault_close(g_vaultHandle);
+	TrieDestroy(g_shopCommands);
+	TrieDestroy(g_serviceListCommands);
+	TrieDestroy(g_reloadCommands);
+	TrieDestroy(g_accountsSteamIds);
 }
 
 _loadCvars()
@@ -258,22 +282,24 @@ _loadCvars()
 	}
 
 	get_pcvar_string(cvar_sklep, g_szTemp, charsmax(g_szTemp));
-	explode(g_szTemp, ',', g_shopCommands, MAX_COMMAND);
+	_explodeCommands(g_szTemp, g_shopCommands);
 
 	get_pcvar_string(cvar_przeladuj, g_szTemp, charsmax(g_szTemp));
-	explode(g_szTemp, ',', g_reloadCommands, MAX_COMMAND);
+	_explodeCommands(g_szTemp, g_reloadCommands);
 	
 	get_pcvar_string(cvar_uslugi, g_szTemp, charsmax(g_szTemp));
-	explode(g_szTemp, ',', g_serviceListCommands, MAX_COMMAND);
+	_explodeCommands(g_szTemp, g_serviceListCommands);
 	
 	show_info = get_pcvar_num(cvar_show_info);
 }
 
 public client_authorized(id)
 {
+	#if defined IS_DEBUG
 	if (!g_playersLoaded) {
 		_log("Player [%d] joined before server config was loaded. It may result in a lack of proper permissions.", id);
 	}
+	#endif
 
 	_assignPlayerFlags(id);
 }
@@ -302,14 +328,15 @@ public sayHook(id)
 {	
 	new text[MAX_COMMAND + 1];
 	read_argv(1, text, charsmax(text));
+	strtolower(text);
 	
-	if (_matchCommand(text, g_shopCommands)) {
+	if (TrieKeyExists(g_shopCommands, text)) {
 		_openShopMenu(id);
 	}
-	else if (_matchCommand(text, g_reloadCommands)) {
-		command_reassignPlayersFlags(id);
+	else if (TrieKeyExists(g_reloadCommands, text)) {
+		_sayCommand_reassignPlayersFlags(id);
 	}
-	else if (_matchCommand(text, g_serviceListCommands)) {
+	else if (TrieKeyExists(g_serviceListCommands, text)) {
 		_showPlayerServices(id);
 	}
 	
@@ -356,9 +383,12 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 		return;
 	}
 
-	if (!getField(content, "license_token", g_licenseToken, charsmax(g_licenseToken))) {
+	new Trie:dict = _createResponseDict(content);
+
+	if (!TrieGetString(dict, "license_token", g_licenseToken, charsmax(g_licenseToken))) {
 		_log("Invalid server config response | %s", content);
 		_errorConfigInvalidResponse();
+		TrieDestroy(dict);
 		return;
 	}
 	
@@ -367,38 +397,56 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 		_validateLicense();
 	}
 
-	getField(content, "sms_text", g_smsText, charsmax(g_smsText));
-	getField(content, "steam_ids", g_accountsSteamIds, charsmax(g_accountsSteamIds));
-	getField(content, "currency", g_currency, charsmax(g_currency));
-	getField(content, "contact", g_contact, charsmax(g_contact));
-	getField(content, "vat", g_szTemp, charsmax(g_szTemp));
-	g_vat = str_to_float(g_szTemp);
+	TrieGetString(dict, "sms_text", g_smsText, charsmax(g_smsText));
+	TrieGetString(dict, "currency", g_currency, charsmax(g_currency));
+	TrieGetString(dict, "contact", g_contact, charsmax(g_contact));
+	TrieGetTextFloat(dict, "vat", g_vat);
 
-	_extractSmsNumbers(content);
-	_extractPrices(content);
-	_extractServices(content);
-	_extractPlayersFlags(content);
+	TrieGetString(dict, "steam_ids", g_szTemp, charsmax(g_szTemp));
+
+	TrieClear(g_accountsSteamIds);
+	new cur_len = 0, max_len = strlen(g_szTemp);
+	while (cur_len < max_len)
+	{
+		new steam_id[MAX_SID + 1];
+		cur_len += copyc(steam_id, charsmax(steam_id), g_szTemp[cur_len], ';') + 1;
+		strtolower(steam_id);
+		trim(steam_id);
+
+		if (strlen(steam_id)) {
+			TrieSetCell(g_accountsSteamIds, steam_id, 1);
+		}
+	}
+	
+	_extractSmsNumbers(dict);
+	_extractPrices(dict);
+	_extractServices(dict);
+	_extractPlayersFlags(dict);
+	
+	TrieDestroy(dict);
 
 	_stopPlugins();
-
 	_checkLoadedPlayersFlags();
 	_checkLoadedServices();
+	_storePlayerFlagsDump();
 }
 
-_extractSmsNumbers(const content[])
+_extractSmsNumbers(Trie:dict)
 {
-	ArrayClear(g_smses);
-	new key[256];
+	new count, key[MAX_CONFIG_KEY + 1];
 
-	formatex(key, charsmax(key), "sn.c");
-	getField(content, key, g_szTemp, charsmax(g_szTemp));
-	new count = str_to_num(g_szTemp);
+	if (!TrieGetTextInt(dict, "sn.c", count)) {
+		_log("Invalid sms numbers dictionary.");
+		return;
+	}
+
+	ArrayClear(g_smses);
 
 	for (new i = 0; i < count; ++i) {
 		new sms[e_SMS];
 		
 		formatex(key, charsmax(key), "sn.%d", i);
-		getField(content, key, sms[NUMBER], MAX_NUMBER);
+		TrieGetString(dict, key, sms[NUMBER], MAX_NUMBER);
 
 		sms[PRICE] = get_sms_cost(sms[NUMBER]);
 
@@ -406,51 +454,52 @@ _extractSmsNumbers(const content[])
 	}
 }
 
-_extractPrices(const content[])
+_extractPrices(Trie:dict)
 {
-	ArrayClear(g_prices);
-	new key[256];
+	new count, key[MAX_CONFIG_KEY + 1];
 
-	formatex(key, charsmax(key), "pr.c");
-	getField(content, key, g_szTemp, charsmax(g_szTemp));
-	new count = str_to_num(g_szTemp);
+	if (!TrieGetTextInt(dict, "pr.c", count)) {
+		_log("Invalid prices dictionary.");
+		return;
+	}
+
+	ArrayClear(g_prices);
 
 	for (new i = 0; i < count; ++i) {
 		new price[e_Price];
 		
 		formatex(key, charsmax(key), "pr.%d.i", i);
-		getField(content, key, g_szTemp, charsmax(g_szTemp));
-		price[pID] = str_to_num(g_szTemp);
+		TrieGetTextInt(dict, key, price[pID]);
 		
 		formatex(key, charsmax(key), "pr.%d.s", i);
-		getField(content, key, price[pSERVICE_ID], MAX_SERVICE_ID);
+		TrieGetString(dict, key, price[pSERVICE_ID], MAX_SERVICE_ID);
 
 		formatex(key, charsmax(key), "pr.%d.p", i);
-		getField(content, key, g_szTemp, charsmax(g_szTemp));
-		price[SMS_PRICE] = str_to_num(g_szTemp);
+		TrieGetTextInt(dict, key, price[SMS_PRICE]);
 
 		formatex(key, charsmax(key), "pr.%d.q", i);
-		getField(content, key, g_szTemp, charsmax(g_szTemp));
-		price[QUANTITY] = str_to_num(g_szTemp);
+		TrieGetTextInt(dict, key, price[QUANTITY]);
 
 		ArrayPushArray(g_prices, price);
 	}
 }
 
-_extractServices(const content[])
+_extractServices(Trie:dict)
 {
-	ArrayClear(g_services);
-	new key[256];
+	new count, key[MAX_CONFIG_KEY + 1];
 
-	formatex(key, charsmax(key), "se.c");
-	getField(content, key, g_szTemp, charsmax(g_szTemp));
-	new count = str_to_num(g_szTemp);
+	if (!TrieGetTextInt(dict, "se.c", count)) {
+		_log("Invalid services dictionary.");
+		return;
+	}
+
+	ArrayClear(g_services);
 
 	for (new i = 0; i < count; ++i) {
 		new service[e_Service];
 		
 		formatex(key, charsmax(key), "se.%d.i", i);
-		getField(content, key, service[sID], MAX_SERVICE_ID);
+		TrieGetString(dict, key, service[sID], MAX_SERVICE_ID);
 		
 		service[PLUGIN] = _getServicePluginByID(service[sID]);
 		if (service[PLUGIN] == -1) {
@@ -461,20 +510,19 @@ _extractServices(const content[])
 		}
 
 		formatex(key, charsmax(key), "se.%d.n", i);
-		getField(content, key, service[sNAME], MAX_SERVICE_NAME);
+		TrieGetString(dict, key, service[sNAME], MAX_SERVICE_NAME);
 
 		formatex(key, charsmax(key), "se.%d.d", i);
-		getField(content, key, service[DESCRIPTION], MAX_DESCRIPTION);
+		TrieGetString(dict, key, service[DESCRIPTION], MAX_DESCRIPTION);
 
 		formatex(key, charsmax(key), "se.%d.ta", i);
-		getField(content, key, service[TAG], MAX_SERVICE_TAG);
+		TrieGetString(dict, key, service[TAG], MAX_SERVICE_TAG);
 
 		formatex(key, charsmax(key), "se.%d.f", i);
-		getField(content, key, service[FLAGS], MAX_FLAGS);
+		TrieGetString(dict, key, service[FLAGS], MAX_FLAGS);
 
 		formatex(key, charsmax(key), "se.%d.ty", i);
-		getField(content, key, g_szTemp, charsmax(g_szTemp));
-		service[TYPES] = str_to_num(g_szTemp);
+		TrieGetTextInt(dict, key, service[TYPES]);
 
 		ArrayPushArray(g_services, service);
 		
@@ -485,33 +533,34 @@ _extractServices(const content[])
 	}
 }
 
-_extractPlayersFlags(const content[])
+_extractPlayersFlags(Trie:dict)
 {
-	ArrayClear(g_playersFlags);
-	new key[256];
+	new count, key[MAX_CONFIG_KEY + 1];
 
-	formatex(key, charsmax(key), "pf.c");
-	getField(content, key, g_szTemp, charsmax(g_szTemp));
-	new count = str_to_num(g_szTemp);
+	if (!TrieGetTextInt(dict, "pf.c", count)) {
+		_log("Invalid players flags dictionary.");
+		return;
+	}
+
+	ArrayClear(g_playersFlags);
 
 	for (new i = 0; i < count; ++i) {
-		new player_flags[e_PlayerFlags];
+		new player_flags[e_PlayerFlags], flags[MAX_FLAGS + 1], type;
 		
 		formatex(key, charsmax(key), "pf.%d.t", i);
-		getField(content, key, g_szTemp, charsmax(g_szTemp));
-		new type = str_to_num(g_szTemp);
+		TrieGetTextInt(dict, key, type);
 
 		formatex(key, charsmax(key), "pf.%d.a", i);
-		getField(content, key, player_flags[pfPLAYER], MAX_AUTH_DATA);
+		TrieGetString(dict, key, player_flags[pfAUTH], MAX_AUTH_DATA);
 
 		formatex(key, charsmax(key), "pf.%d.p", i);
-		getField(content, key, player_flags[pfPASSWORD], MAX_PASSWORD);
+		TrieGetString(dict, key, player_flags[pfPASSWORD], MAX_PASSWORD);
 
 		formatex(key, charsmax(key), "pf.%d.f", i);
-		getField(content, key, g_szTemp, charsmax(g_szTemp));
+		TrieGetString(dict, key, flags, charsmax(flags));
 
-		for (new i = 0; i < strlen(g_szTemp); ++i) {
-			player_flags[pfFLAGS] |= read_flags(g_szTemp[i]);
+		for (new i = 0; i < strlen(flags); ++i) {
+			player_flags[pfFLAGS] |= read_flags(flags[i]);
 		}
 		
 		switch (type) {
@@ -550,14 +599,13 @@ _stopPlugins()
 	}
 }
 
-_loadPlayersFlags()
+public loadPlayersFlags()
 {
 	new url[MAX_URL + 1];
 	new curl_slist: headers;
 
 	headers = curl_slist_append(headers, "Accept: application/assoc");
 	formatex(url, charsmax(url), "%s/api/server/players_flags?token=%s&language=polish", g_shopUrl, g_serverToken);
-
 	makeRequest("GET", url, headers, "", "onLoadPlayersFlagsResponse");
 }
 
@@ -576,8 +624,32 @@ public onLoadPlayersFlagsResponse(const content[], CURLcode: code, statusCode, p
 		_log("Invalid players flags response HTTP code | %d", statusCode);
 		return;
 	}
-	
-	_extractPlayersFlags(content);
+
+	new Trie:dict = _createResponseDict(content);
+	_extractPlayersFlags(dict);
+	TrieDestroy(dict);
+
+	_storePlayerFlagsDump();
+}
+
+Trie:_createResponseDict(const content[])
+{
+	new Trie:dict = TrieCreate();
+	new cur_len = 0, max_len = strlen(content);
+
+	while (cur_len < max_len)
+	{
+		new key[MAX_CONFIG_KEY + 1];
+
+		cur_len += copyc(g_szTemp, charsmax(g_szTemp), content[cur_len], '^n') + 1;
+		new position = copyc(key, charsmax(key), g_szTemp, ':') + 1;
+		
+		if (strlen(key)) {
+			TrieSetString(dict, key, g_szTemp[position]);
+		}
+	}
+
+	return dict;
 }
 
 //
@@ -587,15 +659,24 @@ public onLoadPlayersFlagsResponse(const content[], CURLcode: code, statusCode, p
 public command_reloadServerConfig()
 {
 	_loadServerConfig();
+	log_amx("Server config has been reloaded.");
 }
 
 public command_reloadPlayersFlags()
-{	
-	_loadPlayersFlags();
+{
+	loadPlayersFlags();
+	log_amx("Players flags have been reloaded.");
 }
 
-public command_reassignPlayersFlags(id)
-{	
+public command_reassignPlayersFlags()
+{
+	g_lastReassign = get_systime();
+	_reassignPlayersFlags();
+	log_amx("Players flags have been reassigned.");
+}
+
+_sayCommand_reassignPlayersFlags(id)
+{
 	if (g_lastReassign + 10 > get_systime()) {
 		client_print_color(id, Red, "^4[%s] ^1Ktos przed chwila przeladowal liste. Odczekaj chwile.", PREFIX);
 		return;
@@ -604,9 +685,7 @@ public command_reassignPlayersFlags(id)
 	g_lastReassign = get_systime();
 	_reassignPlayersFlags();
 
-	if (is_user_connected(id)) {
-		client_print_color(id, Red, "^4[%s] ^1Prawidlowo przeladowano liste flag wykupionych w sklepiku.", PREFIX);
-	}
+	client_print_color(id, Red, "^4[%s] ^1Prawidlowo przeladowano liste flag wykupionych w sklepie.", PREFIX);
 }
 
 /**
@@ -653,8 +732,8 @@ _addUsersToGlobalArray()
 	for (new i = 0; i < admins_num(); ++i) {
 		new global_player[e_PlayerFlags], global_player_name[33];
 		
-		admins_lookup(i, AdminProp_Auth, global_player[pfPLAYER], 32);
-		copy(global_player_name, charsmax(global_player_name), global_player[pfPLAYER]);
+		admins_lookup(i, AdminProp_Auth, global_player[pfAUTH], MAX_AUTH_DATA);
+		copy(global_player_name, charsmax(global_player_name), global_player[pfAUTH]);
 		strtolower(global_player_name);
 		
 		admins_lookup(i, AdminProp_Password, global_player[pfPASSWORD], MAX_PASSWORD);
@@ -668,20 +747,20 @@ _addUsersToGlobalArray()
 			s = (l + p) / 2;
 			
 			ArrayGetArray(local_users, s, local_player);
-			strtolower(local_player[pfPLAYER]);
-			if (global_player[pfTYPE] == local_player[pfTYPE] && equali(global_player_name, local_player[pfPLAYER])) {
+			strtolower(local_player[pfAUTH]);
+			if (global_player[pfTYPE] == local_player[pfTYPE] && equali(global_player_name, local_player[pfAUTH])) {
 				// Leave global password
 				global_player[pfFLAGS] |= local_player[pfFLAGS];
 				ArrayPushArray(global_users, global_player);
 				ArrayDeleteItem(local_users, s);
 				break;
 			}
-			else if (strcmp(global_player_name, local_player[pfPLAYER]) > 0) {
+			else if (strcmp(global_player_name, local_player[pfAUTH]) > 0) {
 				l = s + 1;
 			}
 			else if (
 				_getOrderOfType(global_player[pfTYPE]) > _getOrderOfType(local_player[pfTYPE]) &&
-				equali(global_player_name, local_player[pfPLAYER])
+				equali(global_player_name, local_player[pfAUTH])
 			) {
 				l = s + 1;
 			}
@@ -699,12 +778,12 @@ _addUsersToGlobalArray()
 	for (new i = 0; i < ArraySize(global_users); ++i) {
 		new player_flags[e_PlayerFlags];
 		ArrayGetArray(global_users, i, player_flags);
-		admins_push(player_flags[pfPLAYER], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
+		admins_push(player_flags[pfAUTH], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
 	}
 	for (new i = 0; i < ArraySize(local_users); ++i) {
 		new player_flags[e_PlayerFlags];
 		ArrayGetArray(local_users, i, player_flags);
-		admins_push(player_flags[pfPLAYER], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
+		admins_push(player_flags[pfAUTH], player_flags[pfPASSWORD], player_flags[pfFLAGS], player_flags[pfTYPE]);
 	}
 }
 
@@ -721,20 +800,20 @@ _assignPlayerFlags(id)
 		if (player_flags[pfTYPE] & FLAG_NICK) {
 			new name[MAX_NAME + 1];
 			get_user_name(id, name, charsmax(name));
-			if (! equali(name, player_flags[pfPLAYER])) {
+			if (! equali(name, player_flags[pfAUTH])) {
 				continue;
 			}
 		}
 		else if (player_flags[pfTYPE] & FLAG_IP) {
 			new ip[MAX_IP + 1];
 			get_user_ip(id, ip, charsmax(ip), true);
-			if (! equali(ip, player_flags[pfPLAYER])) {
+			if (! equali(ip, player_flags[pfAUTH])) {
 				continue;
 			}
 		}
 		else if (player_flags[pfTYPE] & FLAG_AUTHID) {			
 			new sid[MAX_SID + 1], arr_sid[MAX_SID + 1];
-			copy(arr_sid, charsmax(arr_sid), player_flags[pfPLAYER]);
+			copy(arr_sid, charsmax(arr_sid), player_flags[pfAUTH]);
 			get_user_authid(id, sid, charsmax(sid));
 			
 			strtolower(arr_sid);
@@ -779,6 +858,50 @@ _checkPassword(id, const tag[], const valid_password[])
 	vc_md5(password, password_md5);
 
 	return equal(password_md5, valid_password) || equal(password, valid_password);
+}
+
+//
+// ----------------------------------------------- CONFIG VAULT ---------------------------------------------------
+//
+
+_storePlayerFlagsDump()
+{
+	new iLen = 0, iMax = charsmax(g_szTemp);
+
+	iLen += formatex(g_szTemp[iLen], iMax-iLen, "pf.c:%d^n", ArraySize(g_playersFlags));
+
+	for (new i = 0; i < ArraySize(g_playersFlags); ++i) {
+		new player_flags[e_PlayerFlags], flags[MAX_FLAGS + 1], type;
+
+		ArrayGetArray(g_playersFlags, i, player_flags);
+		get_flags(player_flags[pfFLAGS], flags, charsmax(flags));
+
+		if (player_flags[pfTYPE] & FLAG_AUTHID) {
+			type = TYPE_SID;
+		} else if (player_flags[pfTYPE] & FLAG_IP) {
+			type = TYPE_IP;
+		} else {
+			type = TYPE_NICK;
+		}
+
+		iLen += formatex(g_szTemp[iLen], iMax-iLen, "pf.%d.t:%d^n", i, type);
+		iLen += formatex(g_szTemp[iLen], iMax-iLen, "pf.%d.a:%s^n", i, player_flags[pfAUTH]);
+		iLen += formatex(g_szTemp[iLen], iMax-iLen, "pf.%d.p:%s^n", i, player_flags[pfPASSWORD]);
+		iLen += formatex(g_szTemp[iLen], iMax-iLen, "pf.%d.f:%s^n", i, flags);
+	}
+
+	nvault_set(g_vaultHandle, VAULT_PLAYER_FLAGS_KEY, g_szTemp);
+}
+
+_restorePlayerFlagsFromVault()
+{
+	nvault_get(g_vaultHandle, VAULT_PLAYER_FLAGS_KEY, g_szTemp, charsmax(g_szTemp));
+
+	if (strlen(g_szTemp)) {
+		new Trie:dict = _createResponseDict(g_szTemp);
+		_extractPlayersFlags(dict);
+		TrieDestroy(dict);
+	}
 }
 
 //
@@ -844,8 +967,7 @@ _openShopMenu(id)
 			menu_additem(menu, szText, data, 0, menu_callback);
 		}
 	}
-	
-	// Replace Exit with Wyjdz
+
 	menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
 	menu_display(id, menu);
 	
@@ -924,7 +1046,6 @@ _openPricingMenu(id, service_id)
 		menu_additem(menu, szText, data);
 	}
 	
-	// Wyjdz zamiast Exit
 	menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
 	
 	if (menu_items(menu) > 1) {
@@ -972,8 +1093,8 @@ _openServiceTypeMenu(id)
 		menu_additem(menu, "Na Nick + haslo", "", 0, menu_callback);
 		menu_additem(menu, "Na IP + haslo", "", 0, menu_callback);
 		menu_additem(menu, "Na SteamID", "", 0, menu_callback);
-	
-		menu_setprop(menu, MPROP_EXIT, MEXIT_NEVER);
+
+		menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
 	
 		new data[4];
 		data[0] = id;
@@ -1001,10 +1122,8 @@ public serviceTypeMenu_callback(id, menu, item)
 
 public serviceTypeMenu_handler(id, menu, item)
 {
-	if (0 <= item && item <= 2) {
-		remove_task(TASK_KEEP_DISPLAYING_MENU+id);
-		menu_destroy(menu);
-	}
+	remove_task(TASK_KEEP_DISPLAYING_MENU+id);
+	menu_destroy(menu);
 
 	switch (item) {
 		case 0: {
@@ -1291,31 +1410,32 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 		client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrocilo bledny HTTP code: %d", PREFIX, statusCode);
 		return;
 	}
-	
-	new status[128], text[128];
-	getField(content, "status", status, charsmax(status));
-	getField(content, "text", text, charsmax(text));
-	
+
+	new status[128], text[128], warnings[512];
+
+	new Trie:dict = _createResponseDict(content);
+	TrieGetString(dict, "status", status, charsmax(status));
+	TrieGetString(dict, "text", text, charsmax(text));
+	TrieGetString(dict, "warnings", warnings, charsmax(warnings));
+	TrieDestroy(dict);
+
 	if (strlen(text)) {
 		client_print_color(playerId, Red, "^4[%s] ^1%s", PREFIX, text);
 	} else {
-		log_amx("Invalid response: %s", content);
+		_log("Invalid purchase response: %s", content);
 		client_print_color(playerId, Red, "^4[%s] ^1Wystapil blad. Brak odpowiedzi z serwera.", PREFIX);
 	}
 
 	if (equal(status, "warnings")) {
-		new szWarnings[512];
-		getField(content, "warnings", szWarnings, charsmax(szWarnings));
-
 		formatex(g_szTemp, charsmax(g_szTemp), 
 			"<html>\
 			<head><meta http-equiv=^"Content-Type^" content=^"text/html^" charset=^"UTF-8^"></head>\
 			<body style=^"background-color: #0f0f0f; color: #ccc; font-size: 14px;^">\
 			<div style=^"text-align: center; font-size: 22px; font-weight: bold;^">Bledy ktore wystapily przy zakupie uslugi</div>\
-			%s\
+			%s^n\
 			<i>Uzyj jeszcze raz tego samego kodu zwrotnego sms</i>.</body>\
 			</html>", 
-			szWarnings
+			warnings
 		);
 		show_motd(playerId, g_szTemp, "Bledy przy zakupie uslugi");
 	}
@@ -1376,7 +1496,7 @@ _handleServicePurchase(id)
 	// Jezeli usluga ma flagi do ustawienia to wczytujemy ponownie dane z bazy
 	if (service[FLAGS]) {
 		// Musimy przeladowac z opoznieniem, aby dane uzytkownika zalapaly nowe haslo
-		set_task(2.0, "command_reloadPlayersFlags");
+		set_task(2.0, "loadPlayersFlags");
 	}
 }
 
@@ -1430,27 +1550,32 @@ public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode,
 		return;
 	}
 
-	new key[256];
+	new count, key[MAX_CONFIG_KEY + 1];
 	new menu = menu_create("Twoje obecne uslugi", "showPlayerServices_handler");
 
-	formatex(key, charsmax(key), "c");
-	if (!getField(content, key, g_szTemp, charsmax(g_szTemp))) {
-		log_amx("Invalid user services response. | %s", content);
+	new Trie:dict = _createResponseDict(content);
+
+	if (!TrieGetTextInt(dict, "c", count)) {
+		_log("Invalid user services response. | %s", content);
+		client_print_color(playerId, Red, "^4[%s] ^1Nieprawidlowa odpowiedz serwera. Zglos problem opiekunowi serwera.", PREFIX);
+		TrieDestroy(dict);
+		return;
 	}
-	new count = str_to_num(g_szTemp);
 
 	for (new i = 0; i < count; ++i) {
 		new service_name[MAX_SERVICE_ID + 1], expire[32 + 1], item_text[128];
 		
 		formatex(key, charsmax(key), "%d.s", i);
-		getField(content, key, service_name, charsmax(service_name));
+		TrieGetString(dict, key, service_name, charsmax(service_name));
 
 		formatex(key, charsmax(key), "%d.e", i);
-		getField(content, key, expire, charsmax(expire));
+		TrieGetString(dict, key, expire, charsmax(expire));
 
 		formatex(item_text, charsmax(item_text), "%s - wygasa: %s", service_name, expire);
 		menu_additem(menu, item_text);
 	}
+
+	TrieDestroy(dict);
 	
 	if (menu_items(menu)) {
 		menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
@@ -1458,8 +1583,8 @@ public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode,
 	}
 	else {
 		new command[MAX_COMMAND + 1];
-		_getFirstCommand(g_shopCommands, command, charsmax(command));
-		client_print_color(playerId, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s.", PREFIX, command);
+		_getShopCommand(command, charsmax(command));
+		client_print_color(playerId, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s", PREFIX, command);
 	}
 }
 
@@ -1497,8 +1622,8 @@ public displayCommercial()
 {	
 	if (get_playersnum() > 1) {
 		new command[MAX_COMMAND + 1];
-		_getFirstCommand(g_shopCommands, command, charsmax(command));
-		client_print_color(0, Red, "^4[%s] ^1Zapraszamy wszystkich do korzystania ze ^3sklepiku! ^1Wystarczy wpisac: ^4%s", PREFIX, command);
+		_getShopCommand(command, charsmax(command));
+		client_print_color(0, Red, "^4[%s] ^1Zapraszamy wszystkich do korzystania ze ^3sklepu! ^1Wystarczy wpisac: ^4%s", PREFIX, command);
 	}
 }
 
@@ -1611,7 +1736,11 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 
 	if (statusCode == 403) {
 		new text[128 + 1];
-		getField(content, "text", text, charsmax(text));
+
+		new Trie:dict = _createResponseDict(content);
+		TrieGetString(dict, "text", text, charsmax(text));
+		TrieDestroy(dict);
+
 		_errorForbidden(text);
 		return;
 	}
@@ -1621,8 +1750,13 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 		return;
 	}
 
-	new text[32 + 1];
-	getField(content, "text", text, charsmax(text));
+	new text[32 + 1], signature;
+
+	new Trie:dict = _createResponseDict(content);
+	TrieGetString(dict, "text", text, charsmax(text));
+	TrieGetTextInt(dict, "signature", signature);
+	TrieGetTextInt(dict, "footer", g_footer);
+	TrieDestroy(dict);
 
 	if (!equal(text, "ok")) {
 		_log("Invalid license validation response | %s", content);
@@ -1630,17 +1764,10 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 		return;
 	}
 
-	new szSignature[16];
-	getField(content, "signature", szSignature, charsmax(szSignature));
-
-	if (str_to_num(szSignature) != g_signature) {
+	if (signature != g_signature) {
 		_errorForbidden();
 		return;
 	}
-
-	new footer[2];
-	getField(content, "footer", footer, charsmax(footer));
-	g_footer = str_to_num(footer) ? true : false;
 
 	g_licenseValidated = true;
 	log_amx("Walidacja licencji zostala zakonczona pomyslnie.");
@@ -1768,16 +1895,62 @@ _canUseShop()
 
 _canPayWithWallet(id)
 {
-	new steam_id[MAX_SID + 2];
+	new steam_id[MAX_SID + 1];
 
 	get_user_authid(id, steam_id, charsmax(steam_id));
-	// CSGO uses different steamid prefix. STEAM_1 instead of STEAM_0.
-	// That is why we want to ignore SID prefix.
-	replace(steam_id, charsmax(steam_id), "STEAM_1", "");
-	replace(steam_id, charsmax(steam_id), "STEAM_0", "");
-	format(steam_id, charsmax(steam_id), "%s;", steam_id);
+	strtolower(steam_id);
 
-	return containi(g_accountsSteamIds, steam_id) != -1;
+	if (TrieKeyExists(g_accountsSteamIds, steam_id)) {
+		return true;
+	}
+
+	// CSGO uses different steamid prefix. STEAM_1 instead of STEAM_0.
+	// We want to check against it as well.
+	replace(steam_id, charsmax(steam_id), "steam_1", "steam_0");
+	if (TrieKeyExists(g_accountsSteamIds, steam_id)) {
+		return true;
+	}
+
+	replace(steam_id, charsmax(steam_id), "steam_0", "steam_1");
+	return TrieKeyExists(g_accountsSteamIds, steam_id);
+}
+
+_getShopCommand(output[], len)
+{
+	#if defined TrieIterCreate
+	new TrieIter:iter = TrieIterCreate(g_shopCommands);
+	if (!TrieIterEnded(iter)) {
+		TrieIterGetKey(iter, output, len);
+	} else {
+		formatex(output, len, "");
+	}
+	TrieIterDestroy(iter);
+	#else
+	get_pcvar_string(cvar_sklep, g_szTemp, charsmax(g_szTemp));
+	copyc(output, len, g_szTemp, ',');
+	#endif
+}
+
+/**
+ * https://amxx.pl/topic/43223-explode/
+ */
+_explodeCommands(const text[], Trie:dict)
+{
+	TrieClear(dict);
+
+	new cur_len = 0, max_len = strlen(text);
+	
+	while (cur_len < max_len)
+	{
+		new command[MAX_COMMAND + 1];
+		cur_len += copyc(command, charsmax(command), text[cur_len], ',') + 1;
+		strtolower(command);
+		trim(command);
+
+		if (strlen(command)) {
+			TrieSetCell(dict, command, 1);
+		}
+	}
 }
 
 //
@@ -1872,19 +2045,19 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 	new CURL: handle, curl_slist: newHeaders, data[requestStruct];
 
 	#if defined IS_DEBUG
-	log_amx("Request | %s %s %s", method, url, body);
+	_log("Request | %s %s %s", method, url, body);
 	#endif
    	
    	handle = curl_easy_init();
    	if (!handle) {
-   		_log("Nie udalo sie utworzyc uchwytu CURL.");
+   		_log("The CURL handle couldn't be initialized.");
    		return false;
    	}
 
    	new requestId = g_requestCounter++ % MAX_REQUESTS_COUNT;
 
    	if (g_requestsInProgress[requestId]) {
-   		_log("Pula requestetow jest pelna. Request nie zostal wykonany.");
+   		_log("Requests pool is full. Request has not been execeuted.");
    		return false;
    	}
 
@@ -1949,7 +2122,7 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 runRequestCallback(const function[], const httpResponseContent[], playerId, CURLcode: code, statusCode)
 {
 	#if defined IS_DEBUG
-	log_amx("Request response | %d %d %s", code, statusCode, httpResponseContent);
+	_log("Request response | %d %d %s", code, statusCode, httpResponseContent);
 	#endif
 
 	if (!strlen(function) || callfunc_begin(function) == 1) {
@@ -1959,7 +2132,7 @@ runRequestCallback(const function[], const httpResponseContent[], playerId, CURL
 		callfunc_push_int(playerId);
 		callfunc_end();
 	} else {
-		_log("Funkcja nie zostala prawidlowo wywolana [%s]", function);
+		_log("Functions hasn't been execeuted properly [%s]", function);
 	}
 }
 
@@ -2039,38 +2212,11 @@ vc_md5(const szString[], md5buffer[34])
 
 // --------------------------------------------------------- Stocks ------------------------------------------------------------
 
-stock bool:_matchCommand(const text[], Array:commands)
-{
-	for (new i = 0; i < ArraySize(commands); ++i) {
-		new command[MAX_COMMAND + 1];
-		ArrayGetString(commands, i, command, charsmax(command));
-
-		if (equali(text, command)) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-stock _getFirstCommand(Array:commands, output[], maxlen)
-{
-	if (ArraySize(commands) == 0) {
-		formatex(output, maxlen, "");
-	} else {
-		ArrayGetString(commands, 0, output, maxlen);
-	}
-}
-
 stock bool:is_steam(id)
 {	
 	new auth[32];
 	get_user_authid(id, auth, charsmax(auth));
-	if (contain(auth, "STEAM_0:0:") != -1 || contain(auth, "STEAM_0:1:") != -1) {
-		return true;
-	}
-	
-	return false;
+	return contain(auth, "STEAM_0:0:") != -1 || contain(auth, "STEAM_0:1:") != -1;
 }
 
 stock get_sms_cost(const number[])
@@ -2120,28 +2266,6 @@ stock groupDigits(a, output[], len)
 	}
 }
 
-stock getField(const text[], const field[], output[], len)
-{
-	new pattern[64];
-	formatex(pattern, charsmax(pattern), "^^%s:(.*)$", field);
-	return matchRegex(text, pattern, output, len, 1);
-}
-
-stock matchRegex(const text[], const pattern[], output[], len, group = 0)
-{
-	new ret, error[32];
-	new Regex:reg = regex_match(text, pattern, ret, error, charsmax(error), "m");
-	
-	if (reg > REGEX_NO_MATCH) {
-		regex_substr(reg, group, output, len);
-		regex_free(reg);
-		return true;
-	}
-	
-	_log("Regex error. Pattern: %s, Error: %s, Reg: %d", pattern, error, reg);
-	return false;
-}
-
 stock StringURLEncode(const szInput[], szOutput[], const iLen)
 {	
 	static const HEXCHARS[ 16 ] = {
@@ -2185,18 +2309,26 @@ stock StringURLEncode(const szInput[], szOutput[], const iLen)
 	return iFLen;
 }
 
-/**
- * https://amxx.pl/topic/43223-explode/
- */
-stock explode(const string[], const character, Array:output, maxlen)
+stock bool:TrieGetTextInt(Trie: dict, const key[], &output)
 {
-	new len = strlen(string);
-	new oLen = 0;
-	
-	while (oLen < len)
-	{
-		new text[128 + 1];
-		oLen += (1 + copyc(text, maxlen, string[oLen], character));
-		ArrayPushString(output, text);
+	new szNumber[MAX_NUMBER_LENGTH + 1];
+
+	if (TrieGetString(dict, key, szNumber, charsmax(szNumber))) {
+		output = str_to_num(szNumber);
+		return true;
 	}
+
+	return false;
+}
+
+stock bool:TrieGetTextFloat(Trie: dict, const key[], &Float:output)
+{
+	new szNumber[MAX_NUMBER_LENGTH + 1];
+
+	if (TrieGetString(dict, key, szNumber, charsmax(szNumber))) {
+		output = str_to_float(szNumber);
+		return true;
+	}
+
+	return false;
 }
