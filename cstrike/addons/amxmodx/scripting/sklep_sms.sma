@@ -1,7 +1,6 @@
 #include <amxmodx>
 #include <amxmisc>
 #include <curl>
-#include <regex>
 #include <nvault>
 #include <shop_sms_const>
 #include <custom_color_chat>
