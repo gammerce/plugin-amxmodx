@@ -1,13 +1,16 @@
 #include <amxmodx>
 #include <shop_sms>
 
-new const service_id[MAX_SERVICE_ID + 1] = "resnick";
-#define PLUGIN "Sklep-SMS: Usluga Rezerwacja Nicku"
+#pragma semicolon 1
 
-public plugin_init() {
-	register_plugin(PLUGIN, VERSION, "SeeK")
+new const service_id[MAX_SERVICE_ID + 1] = "resnick";
+
+public plugin_init()
+{
+	register_plugin("Sklep-SMS: Rezerwacja Nicku", VERSION, "SeeK");
 }
 
-public plugin_cfg() {
+public plugin_cfg()
+{
 	ss_register_service(service_id);
 }
