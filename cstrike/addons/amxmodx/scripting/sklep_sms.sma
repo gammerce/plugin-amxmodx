@@ -44,7 +44,7 @@ const MAX_NAME = 32;
 const MAX_SID = 34;
 const MAX_IP = 15;
 const MAX_PORT = 8;
-const MAX_TOKEN = 32;
+const MAX_SHOP_TOKEN = 32;
 const MAX_FULL_IP = MAX_IP + MAX_PORT + 1; // ip + semicolon + port
 const MAX_URL_HOST = 128;
 const MAX_URL_PATH = 384;
@@ -69,7 +69,7 @@ new const VAULT_PLAYER_FLAGS_KEY[] = "player_flags";
 new forwrdClientAccess;
 
 // CVARs
-new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_shop_url, cvar_token, cvar_server_ip, cvar_silent_command;
+new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_shop_url, cvar_token, cvar_silent_command;
 new show_info;
 new Trie:g_shopCommands,
 	Trie:g_serviceListCommands,
@@ -84,9 +84,7 @@ new g_serverIp[MAX_IP + 1],
 
 // Server config
 new g_currency[16],
-	g_contact[MAX_CONTACT + 1], 
-	g_shopUrl[MAX_URL + 1],
-	g_serverToken[MAX_TOKEN + 1],
+	g_contact[MAX_CONTACT + 1],
 	g_smsText[MAX_SMS_TEXT + 1],
 	Float:g_vat,
 	Trie:g_accountsSteamIds,
@@ -136,7 +134,7 @@ new Array:g_playersFlags;
 new bool:g_playersLoaded = false;
 new g_lastReassign;
 
-// Dodatkowe zmienne
+// Purchase additional variables
 new which_service[33], 
 	which_price[33], 
 	b_passwords[33][MAX_PASSWORD + 1], 
@@ -179,7 +177,6 @@ public plugin_precache()
 	cvar_show_info 	= register_cvar("sklepsms_info", "1");
 	cvar_shop_url 	= register_cvar("sklepsms_url", "");
 	cvar_token 	= register_cvar("sklepsms_token", "");
-	cvar_server_ip	= register_cvar("sklepsms_server_ip", "");
 	cvar_silent_command	= register_cvar("sklepsms_ciche_komendy", "0");
 	
 	// Read config
@@ -238,19 +235,23 @@ public plugin_cfg()
 		// File was not created (probably due to invalid permissions)
 		_invalidPath(0, g_configPath);
 	}
+
+	new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1];
+
+	_getShopToken(shop_token, charsmax(shop_token));
+	_getShopUrl(shop_url, charsmax(shop_url));
+
+	if (!strlen(shop_url) || !strlen(shop_token)) {
+		_errorNoShopCreds();
+		return;
+	}
 	
 	_loadCvars();
 	
 	// Get server ip
-	new fullIp[MAX_FULL_IP];
-	get_pcvar_string(cvar_server_ip, fullIp, charsmax(fullIp));
-
-	// No IP in CVARs
-	if (!strlen(fullIp)) {
-		get_user_ip(0, fullIp, charsmax(fullIp), false);
-	}
-	
-	split(fullIp, g_serverIp, charsmax(g_serverIp), g_serverPort, charsmax(g_serverPort), ":");
+	new full_ip[MAX_FULL_IP];
+	get_user_ip(0, full_ip, charsmax(full_ip), false);
+	split(full_ip, g_serverIp, charsmax(g_serverIp), g_serverPort, charsmax(g_serverPort), ":");
 
 	_loadServerConfig();
 	_restorePlayerFlagsFromVault();
@@ -267,19 +268,6 @@ public plugin_end()
 
 _loadCvars()
 {
-	get_pcvar_string(cvar_shop_url, g_shopUrl, charsmax(g_shopUrl));
-	get_pcvar_string(cvar_token, g_serverToken, charsmax(g_serverToken));
-	
-	// Remove trailing slash
-	if (strlen(g_shopUrl) && g_shopUrl[strlen(g_shopUrl) - 1] == '/') {
-		g_shopUrl[strlen(g_shopUrl) - 1] = '^0';
-	}
-
-	if (!strlen(g_shopUrl) || !strlen(g_serverToken)) {
-		_errorNoShopCreds();
-		return;
-	}
-
 	get_pcvar_string(cvar_sklep, g_szTemp, charsmax(g_szTemp));
 	_explodeCommands(g_szTemp, g_shopCommands);
 
@@ -348,11 +336,14 @@ public sayHook(id)
 
 _loadServerConfig()
 {
-	new url[MAX_URL + 1];
+	new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1], url[MAX_URL + 1];
 	new curl_slist: headers;
 
+	_getShopUrl(shop_url, charsmax(shop_url));
+	_getShopToken(shop_token, charsmax(shop_token));
+
 	headers = curl_slist_append(headers, "Accept: application/assoc");
-	formatex(url, charsmax(url), "%s/api/server/config?token=%s&version=%s&player_flags=1&language=polish", g_shopUrl, g_serverToken, VERSION);
+	formatex(url, charsmax(url), "%s/api/server/config?token=%s&version=%s&player_flags=1&language=polish", shop_url, shop_token, VERSION);
 
 	if (!makeRequest("GET", url, headers, "", "onLoadServerConfigResponse")) {
 		_errorConfigFailed(999);
@@ -600,11 +591,14 @@ _stopPlugins()
 
 public loadPlayersFlags()
 {
-	new url[MAX_URL + 1];
+	new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1], url[MAX_URL + 1];
 	new curl_slist: headers;
 
+	_getShopUrl(shop_url, charsmax(shop_url));
+	_getShopToken(shop_token, charsmax(shop_token));
+
 	headers = curl_slist_append(headers, "Accept: application/assoc");
-	formatex(url, charsmax(url), "%s/api/server/players_flags?token=%s&language=polish", g_shopUrl, g_serverToken);
+	formatex(url, charsmax(url), "%s/api/server/players_flags?token=%s&language=polish", shop_url, shop_token);
 	makeRequest("GET", url, headers, "", "onLoadPlayersFlagsResponse");
 }
 
@@ -1338,16 +1332,20 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 	new curl_slist: headers;
 	{
 		new service[e_Service], auth_data[32 + 1], steam_id[32 + 1], price[e_Price], ip[MAX_IP + 1];
-		new u_service_id[MAX_SERVICE_ID * 2 + 1], u_auth_data[64 + 1], u_steam_id[64 + 1],
-			u_password[MAX_PASSWORD * 2 + 1], u_sms_code[MAX_CODE * 2 + 1];
+		new u_service_id[MAX_SERVICE_ID * 2 + 1], u_auth_data[64 + 1], u_password[MAX_PASSWORD * 2 + 1], u_sms_code[MAX_CODE * 2 + 1];
 		
-		new sign[34], sign_body[1 + charsmax(auth_data) + MAX_CODE + charsmax(g_serverToken) + 1];
+		new sign[34], sign_body[1 + charsmax(auth_data) + MAX_CODE + MAX_SHOP_TOKEN + 1];
 		new header[MAX_HEADER + 1];
 
-		// Pobieramy dane o usludze
+		new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1];
+
+		_getShopUrl(shop_url, charsmax(shop_url));
+		_getShopToken(shop_token, charsmax(shop_token));
+
+		// Get service's data
 		ArrayGetArray(g_services, which_service[id], service);
 		
-		// Pobieramy dane gracza Nick / IP / SID
+		// Get player's auth data
 		switch (b_types[id]) {
 			case TYPE_IP: get_user_ip(id, auth_data, charsmax(auth_data), true);
 			case TYPE_SID: get_user_authid(id, auth_data, charsmax(auth_data));
@@ -1367,12 +1365,11 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		StringURLEncode(auth_data, u_auth_data, charsmax(u_auth_data));
 		StringURLEncode(b_passwords[id], u_password, charsmax(u_password));
 		StringURLEncode(sms_code, u_sms_code, charsmax(u_sms_code));
-		StringURLEncode(steam_id, u_steam_id, charsmax(u_steam_id));
 
 		// Calculate body sign
 		formatex(sign_body, charsmax(sign_body),
 			"%d#%s#%s#%s",
-			b_types[id], auth_data, sms_code, g_serverToken
+			b_types[id], auth_data, sms_code, shop_token
 		);
 		vc_md5(sign_body, sign);
 
@@ -1385,7 +1382,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 			sign, u_service_id, b_types[id], u_auth_data, u_password, method, u_sms_code, price[pID], ip
 		);
 		
-		formatex(url, charsmax(url), "%s/api/server/purchase?token=%s&language=polish", g_shopUrl, g_serverToken);
+		formatex(url, charsmax(url), "%s/api/server/purchase?token=%s&language=polish", shop_url, shop_token);
 	}
 
 	if (!makeRequest("POST", url, headers, body, "onPurchaseServiceResponse", id)) {
@@ -1516,14 +1513,17 @@ _showPlayerServices(id)
 	StringURLEncode(ip, escaped_ip, charsmax(escaped_ip));
 	StringURLEncode(steam_id, escaped_steam_id, charsmax(escaped_steam_id));
 
-	new url[MAX_URL + 1];
+	new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1], url[MAX_URL + 1];
 	new curl_slist: headers;
+
+	_getShopUrl(shop_url, charsmax(shop_url));
+	_getShopToken(shop_token, charsmax(shop_token));
 
 	headers = curl_slist_append(headers, "Accept: application/assoc");
 	formatex(
 		url, charsmax(url),
 		"%s/api/server/user_services?token=%s&nick=%s&ip=%s&steam_id=%s&language=polish",
-		g_shopUrl, g_serverToken, escaped_name, escaped_ip, escaped_steam_id
+		shop_url, shop_token, escaped_name, escaped_ip, escaped_steam_id
 	);
 
 	if (makeRequest("GET", url, headers, "", "onShowPlayerServicesResponse", id)) {
@@ -1537,6 +1537,10 @@ public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode,
 {
 	if (!is_user_connected(playerId)) {
 		return;
+	}
+
+	if (task_exists(TASK_DISPLAY_LOADING + playerId)) {
+		remove_task(TASK_DISPLAY_LOADING + playerId);
 	}
 	
 	if (code != CURLE_OK) {
@@ -1928,6 +1932,23 @@ _getShopCommand(output[], len)
 	get_pcvar_string(cvar_sklep, g_szTemp, charsmax(g_szTemp));
 	copyc(output, len, g_szTemp, ',');
 	#endif
+}
+
+_getShopToken(output[], len)
+{
+	get_pcvar_string(cvar_token, output, len);
+	trim(output);
+}
+
+_getShopUrl(output[], len)
+{
+	get_pcvar_string(cvar_shop_url, output, len);
+	trim(output);
+
+	// Remove trailing slash
+	if (strlen(output) && output[strlen(output) - 1] == '/') {
+		output[strlen(output)-1] = 0;
+	}
 }
 
 /**
