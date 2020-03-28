@@ -1,0 +1,5 @@
+[en]
+INVALID_PASSWORD = Invalid password
+
+[pl]
+INVALID_PASSWORD = Nieprawidlowe haslo

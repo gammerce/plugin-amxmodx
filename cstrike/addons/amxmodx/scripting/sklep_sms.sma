@@ -201,6 +201,8 @@ public plugin_init()
 {
 	register_plugin("Sklep SMS", VERSION, "SeeK");
 	
+	register_dictionary("shopsms.txt");
+
 	register_menucmd(register_menuid("smsDetails"), KEYS, "smsDetails_handler");
 	register_concmd("Podaj_Kod_Zwrotny", "onSmsCodeEntered");
 	register_concmd("ssnick_Podaj_Haslo", "onNickPasswordEntered");
@@ -828,14 +830,14 @@ _assignPlayerFlags(id)
 		) {
 
 			if (player_flags[pfTYPE]&FLAG_KICK) {
-				server_cmd("kick #%d ^"Nieprawidlowe haslo^"", get_user_userid(id));
+				server_cmd("kick #%d ^"%L^"", get_user_userid(id), id, "INVALID_PASSWORD");
 				return;
 			}
 
 			// Do not kick the player, instead do not assign him any flags
 			continue;
 		}
-		
+
 		set_user_flags(id, player_flags[pfFLAGS]);
 
 		new ret;
@@ -913,7 +915,7 @@ _openShopMenu(id)
 	}
 	
 	if (g_blocked) {
-		client_print_color(id, Red, "^4[%s] ^1Nie mozna otworzyc sklepu z powodu bledow ze sklepem. Zobacz logi.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1Wystapily bledy ze sklepem, zobacz logi.", PREFIX);
 	}
 	
 	if (!ArraySize(g_services)) {
@@ -922,7 +924,7 @@ _openShopMenu(id)
 	}
 	
 	if (!g_licenseValidated) {
-		client_print_color(id, Red, "^4[%s] ^1Nie udalo sie przeprowadzic walidacji licencji lub wystapil blad w zapytaniu do bazy danych.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1Nie udalo sie przeprowadzic walidacji licencji.", PREFIX);
 		return;
 	}
 	
@@ -961,7 +963,6 @@ _openShopMenu(id)
 		}
 	}
 
-	menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
 	menu_display(id, menu);
 	
 	client_print_color(id, Red, "^4[%s] ^1W razie problemow mozesz sie z nami skontaktowac", PREFIX);
@@ -1039,8 +1040,6 @@ _openPricingMenu(id, service_id)
 		menu_additem(menu, szText, data);
 	}
 	
-	menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
-	
 	if (menu_items(menu) > 1) {
 		menu_display(id, menu);
 	}
@@ -1086,8 +1085,6 @@ _openServiceTypeMenu(id)
 		menu_additem(menu, "Na Nick + haslo", "", 0, menu_callback);
 		menu_additem(menu, "Na IP + haslo", "", 0, menu_callback);
 		menu_additem(menu, "Na SteamID", "", 0, menu_callback);
-
-		menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
 	
 		new data[4];
 		data[0] = id;
@@ -1581,7 +1578,6 @@ public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode,
 	TrieDestroy(dict);
 	
 	if (menu_items(menu)) {
-		menu_setprop(menu, MPROP_EXITNAME, "Wyjdz");
 		menu_display(playerId, menu);
 	}
 	else {
