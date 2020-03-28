@@ -124,7 +124,7 @@ public chosen_checkSecondClass(id) {
 	if( cod_get_user_class(id) == toClass[id] ) { // Prawidlowo ustawilo klase
 		// Ustawiamy klase ktora mial gracz przed zakupem
 		cod_set_user_class(id, currentClass[id], 1);
-		ss_show_sms_info(id);
+		ss_open_payment_method_menu(id);
 	}
 	else if ( cod_get_user_class(id) == fromClass[id] ) { // Wciaz nie zmienilo z poprzedniej klasy
 		set_task(0.2, "chosen_checkSecondClass", TASK_CHECK_SECOND+id);

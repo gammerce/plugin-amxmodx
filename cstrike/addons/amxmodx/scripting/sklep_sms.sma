@@ -159,7 +159,7 @@ public plugin_natives()
 	register_library("shop_sms");
 	register_native("ss_register_service", "native_registerService");
 	register_native("ss_show_service_purchase", "native_showServicePurchase");
-	register_native("ss_show_sms_info", "native_displaySmsDetails");
+	register_native("ss_open_payment_method_menu", "native_openPaymentMethodMenu");
 	register_native("ss_log", "native_addLog");
 	register_native("ss_is_steam", "native_is_steam");
 }
@@ -583,6 +583,7 @@ _stopPlugins()
 			// Stop the plugin
 			new plugin_name[64];
 			get_plugin(ArrayGetCell(service_plugins, i), plugin_name, charsmax(plugin_name));
+			server_print("Stop %s", plugin_name);
 			pause("acd", plugin_name);
 			ArrayDeleteItem(service_ids, i);
 			ArrayDeleteItem(service_plugins, i);
@@ -2194,13 +2195,13 @@ public native_showServicePurchase(plugin, params)
 	return SS_OK;
 }
 
-public native_displaySmsDetails(plugin, params)
+public native_openPaymentMethodMenu(plugin, params)
 {	
 	if (params != 1) {
 		return SS_BAD_ARGS;
 	}
 	
-	_displaySmsDetails(get_param(1));
+	_openPaymentMethodMenu(get_param(1));
 	return SS_OK;
 }
 

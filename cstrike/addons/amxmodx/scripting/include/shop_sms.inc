@@ -14,7 +14,7 @@ native ss_register_service(const service_id[]);
  * service_id[] - id uslugi
 ------------------------------*/
 
-native ss_show_sms_info(id);
+native ss_open_payment_method_menu(id);
 /*------------------------------
  * Kontynuuje proces zakupu po zwroceniu wartosci SS_STOP w forwardzie ss_service_chosen
  * ---------------------------
@@ -31,7 +31,7 @@ native ss_show_service_purchase(id, const service_id[]);
 
 native ss_log(const message[], any:...);
 /*------------------------------
- * Dodaje informacje do logów.
+ * Dodaje informacje do logï¿½w.
 ------------------------------*/
 
 native bool:ss_is_steam(id);
@@ -55,7 +55,7 @@ forward ss_service_addingtolist(id);
 /*------------------------------
  * Forward wysylany ( do pluginu z ktorego zostala zarejstrowana usluga )
  * w momencie dodawania uslugi do menu z uslugami.
- * Funkcja powinna zwracaæ jedn¹ z dwoch wartosci:
+ * Funkcja powinna zwracaÄ‡ jednÄ… z dwÃ³ch wartosci:
  *  ITEM_ENABLED - usluga ma byc dostepna
  *  ITEM_DISABLED - usluga ma byc niedostepna
  * ---------------------------
@@ -68,8 +68,8 @@ forward ss_service_chosen(id, quantity);
  * w momencie wybrania uslugi.
  * Funkcja powinna zwracac jedna z dwoch wartosci:
  *  SS_OK
- *  SS_STOP - gdy chcemy na pewien czas zatrzymaæ proces wykupowania us³ugi.
- *		Potem musimy go wznowiæ za pomoca natywu ss_show_sms_info.
+ *  SS_STOP - gdy chcemy na pewien czas zatrzymaÄ‡ proces wykupowania usÅ‚ugi.
+ *		Potem musimy go wznowiÄ‡ za pomoca natywu ss_open_payment_method_menu.
  * ---------------------------
  * id - index gracza dokonujacego zakupu
  * quantity - wybrana ilosc ( opcja )

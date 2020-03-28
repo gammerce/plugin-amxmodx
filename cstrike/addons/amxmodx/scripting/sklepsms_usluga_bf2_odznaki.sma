@@ -52,8 +52,7 @@ public ss_service_chosen(id, amount) {
 	new data[2]
 	data[0] = id
 	data[1] = menu
-	
-	// Wyswietlamy
+
 	wyswietlMenu(data)
 	
 	return SS_STOP
@@ -65,7 +64,6 @@ public menuCallback(id, menu, item) {
 	menu_item_getinfo(menu, item, zaccess, data, charsmax(data), iName, charsmax(iName), callback);
 	
 	return data[1] ? ITEM_ENABLED : ITEM_DISABLED
-	//return ITEM_ENABLED
 }
 
 public wyswietlMenu(data[]) {
@@ -103,11 +101,10 @@ public menuHandler(id, menu, item) {
 		menu_item_getinfo(menu, item, zaccess, data, charsmax(data), iName, charsmax(iName), callback);
 		
 		dane[id] = data[0]-1
-		
-		// Niszczymy menu
+
 		menu_destroy(menu)
-		
-		ss_show_sms_info(id)
+
+		ss_open_payment_method_menu(id)
 	}
 }
 
