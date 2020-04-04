@@ -290,16 +290,20 @@ public client_authorized(id)
 	}
 	#endif
 
-	_assignPlayerFlags(id);
-}
-
-public client_putinserver(id)
-{	
-	_assignPlayerFlags(id);
+	new access = _assignPlayerFlags(id);
+	
+	if (access) {
+		new name[MAX_NAME + 1], steam_id[MAX_SID + 1], ip[MAX_IP + 1], flags[MAX_FLAGS + 1];
+		get_user_name(id, name, charsmax(name));
+		get_user_authid(id, steam_id, charsmax(steam_id));
+		get_user_ip(id, ip, charsmax(ip), true);
+		get_flags(access, flags, charsmax(flags));
+		log_amx("User: ^"%s<%d><%s><%s>^" was given an access ^"%s^"", name, get_user_userid(id), steam_id, ip, flags);
+	}
 }
 
 public amxbans_sql_initialized()
-{	
+{
 	_reassignPlayersFlags();
 }
 
@@ -785,9 +789,11 @@ _addUsersToGlobalArray()
 
 _assignPlayerFlags(id)
 {	
-	if (! g_playersLoaded) {
-		return;
+	if (!g_playersLoaded) {
+		return 0;
 	}
+
+	new access = 0;
 	
 	for (new i = 0; i < ArraySize(g_playersFlags); ++i) {
 		new player_flags[e_PlayerFlags];
@@ -832,18 +838,24 @@ _assignPlayerFlags(id)
 
 			if (player_flags[pfTYPE]&FLAG_KICK) {
 				server_cmd("kick #%d ^"%L^"", get_user_userid(id), id, "INVALID_PASSWORD");
-				return;
+				return 0;
 			}
 
 			// Do not kick the player, instead do not assign him any flags
 			continue;
 		}
 
-		set_user_flags(id, player_flags[pfFLAGS]);
-
-		new ret;
-		ExecuteForward(forwrdClientAccess, ret, id, player_flags[pfFLAGS]);
+		access |= player_flags[pfFLAGS];
 	}
+
+	if (access) {
+		set_user_flags(id, access);
+		
+		new ret;
+		ExecuteForward(forwrdClientAccess, ret, id, access);
+	}
+
+	return access;
 }
 
 _checkPassword(id, const tag[], const valid_password[])
