@@ -1,7 +1,7 @@
 [en]
 CHOOSE_PAYMENT_METHOD = Choose a payment method
 CHOOSE_SERVICE = Choose a service
-CHOOSE_SERVICE_TYPE = Choose service type
+CHOOSE_SERVICE_TYPE = Choose a service type
 CHOOSE_QUANTITY = Choose quantity %s
 COMMERCIAL = We invite everyone to use ^3the shop! ^1Just type: ^4%s
 CONTACT_US = In case of an issue contact us
