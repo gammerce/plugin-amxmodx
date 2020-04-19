@@ -1023,7 +1023,7 @@ _openPricingMenu(id, service_id)
 	new szText[64], data[3];
 
 	ArrayGetArray(g_services, service_id, service);
-	formatex(szText, charsmax(szText), "\rSklep SMS^n\yWybierz ilosc %s:", service[sNAME]);
+	formatex(szText, charsmax(szText), "\r%L^n\y%L", id, "SHOP_SMS", id, "CHOOSE_QUANTITY", service[sNAME]);
 
 	new menu = menu_create(szText, "pricingMenu_handler");
 
@@ -1044,7 +1044,7 @@ _openPricingMenu(id, service_id)
 		_getPriceQuantity(i, service_id, quantity, charsmax(quantity));
 
 		formatex(szText, charsmax(szText), 
-			"\y%s \wza %d.%s %s + VAT\d ( %d.%s %s )", 
+			"\y%s \w%d.%s %s + VAT\d ( %d.%s %s )", 
 			quantity,
 			price[SMS_PRICE] / 100,
 			two_number_value(price[SMS_PRICE] % 100),
@@ -1072,7 +1072,7 @@ _openPricingMenu(id, service_id)
 		_openServiceTypeMenu(id);
 	}
 	else {
-		client_print_color(id, Red, "^4[%s] ^1Brak cennika dla tej uslugi.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "NO_PRICE_LIST");
 	}
 }
 
@@ -1099,12 +1099,18 @@ _openServiceTypeMenu(id)
 	ArrayGetArray(g_services, which_service[id], service);
 
 	if (service[TYPES] & (TYPE_NICK|TYPE_IP|TYPE_SID)) {
-		new menu = menu_create("Wybierz typ uslugi", "serviceTypeMenu_handler");
+		new menu_title[64], item_text[64];
+		
+		formatex(menu_title, charsmax(menu_title), "%L", id, "CHOOSE_SERVICE_TYPE");
+		new menu = menu_create(menu_title, "serviceTypeMenu_handler");
 		new menu_callback = menu_makecallback("serviceTypeMenu_callback");
 
-		menu_additem(menu, "Na Nick + haslo", "", 0, menu_callback);
-		menu_additem(menu, "Na IP + haslo", "", 0, menu_callback);
-		menu_additem(menu, "Na SteamID", "", 0, menu_callback);
+		formatex(item_text, charsmax(item_text), "%L", id, "TYPE_NICK_PASS");
+		menu_additem(menu, item_text, "", 0, menu_callback);
+		formatex(item_text, charsmax(item_text), "%L", id, "TYPE_IP_PASS");
+		menu_additem(menu, item_text, "", 0, menu_callback);
+		formatex(item_text, charsmax(item_text), "%L", id, "TYPE_STEAM_ID");
+		menu_additem(menu, item_text, "", 0, menu_callback);
 
 		new data[4];
 		data[0] = id;
@@ -1202,12 +1208,18 @@ _serviceChosen(id, type = 0, const szPassword[MAX_PASSWORD + 1] = "")
 }
 
 _openPaymentMethodMenu(id)
-{	
-	new menu = menu_create("Wybierz metode platnosci", "paymentMethodMenu_handler");
+{
+	new menu_title[64], item_text[64];
+	formatex(menu_title, charsmax(menu_title), "%L", id, "CHOOSE_PAYMENT_METHOD");
+	
+	new menu = menu_create(menu_title, "paymentMethodMenu_handler");
 	new menu_callback = menu_makecallback("paymentMethodMenu_callback");
 
-	menu_additem(menu, "SMS", "", 0, menu_callback);
-	menu_additem(menu, "Portfel", "", 0, menu_callback);
+	formatex(item_text, charsmax(item_text), "%L", id, "PAYMENT_METHOD_SMS");
+	menu_additem(menu, item_text, "", 0, menu_callback);
+	
+	formatex(item_text, charsmax(item_text), "%L", id, "PAYMENT_METHOD_WALLET");
+	menu_additem(menu, item_text, "", 0, menu_callback);
 
 	new data[4];
 	data[0] = id;
@@ -1260,7 +1272,7 @@ _displaySmsDetails(id)
 
 	_getPriceQuantity(which_price[id], which_service[id], quantity, charsmax(quantity));
 	
-	formatex(g_szTemp, charsmax(g_szTemp), "\rSklep SMS^n^n");
+	formatex(g_szTemp, charsmax(g_szTemp), "\r%L^n^n", id, "SHOP_SMS");
 	format(g_szTemp, charsmax(g_szTemp), "%sWybrales/as opcje zakupu %s ^n\wInfo: \y%s", g_szTemp, service[sNAME], quantity);
 	format(g_szTemp, charsmax(g_szTemp), 
 		"%s^n^n\rW celu dokonania zakupu, wyslij SMSa^n\wO tresci: \y%s^n\wNa numer: \y%s^n\wKoszt: \y%d.%s %s + VAT\d ( %d.%s %s )", 

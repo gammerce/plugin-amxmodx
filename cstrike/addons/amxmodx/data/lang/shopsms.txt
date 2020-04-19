@@ -1,21 +1,39 @@
 [en]
-CHOOSE_SERVICE = Choose a service:
+CHOOSE_PAYMENT_METHOD = Choose a payment method
+CHOOSE_SERVICE = Choose a service
+CHOOSE_SERVICE_TYPE = Choose service type
+CHOOSE_QUANTITY = Choose quantity %s
 COMMERCIAL = We invite everyone to use ^3the shop! ^1Just type: ^4%s
 CONTACT_US = In case of an issue contact us
 INVALID_PASSWORD = Invalid password
 LICENSE_VALIDATION_FAILED = License validation failed.
+NO_AVAILABLE_SERVICE = No services are available for purchase.
+NO_PRICE_LIST = No price list for this service.
+PAYMENT_METHOD_SMS = SMS
+PAYMENT_METHOD_WALLET = Wallet
 SHOP_IS_BLOCKED = There are shop related errors. Check logs.
 SHOP_IS_DISABLED = Shop is ^3disabled^1.
 SHOP_SMS = Shop SMS
-NO_AVAILABLE_SERVICE = No services are available for purchase.
+TYPE_IP_PASS = IP + Password
+TYPE_NICK_PASS = Nick + Password
+TYPE_STEAM_ID = SteamID
 
 [pl]
-CHOOSE_SERVICE = Wybierz usługę:
+CHOOSE_PAYMENT_METHOD = Wybierz metodę płatności
+CHOOSE_SERVICE = Wybierz usługę
+CHOOSE_SERVICE_TYPE = Wybierz typ usługi
+CHOOSE_QUANTITY = Wybierz ilość %s
 CONTACT_US = W razie problemów skontaktuj się z nami
 COMMERCIAL = Zapraszamy wszystkich do korzystania ze ^3sklepu! ^1Wystarczy wpisać: ^4%s
 INVALID_PASSWORD = Nieprawidlowe hasło
 LICENSE_VALIDATION_FAILED = Walidacja licencji nie powiodła się.
+NO_AVAILABLE_SERVICE = Brak dostepnych uslug do kupienia.
+NO_PRICE_LIST = Brak cennika dla tej uslugi.
+PAYMENT_METHOD_SMS = SMS
+PAYMENT_METHOD_WALLET = Portfel
 SHOP_IS_BLOCKED = Wystąpiły błędy ze sklepem. Zobacz logi.
 SHOP_IS_DISABLE = Sklep jest obecnie ^3wylaczony^1.
 SHOP_SMS = Sklep SMS
-NO_AVAILABLE_SERVICE = Brak dostepnych uslug do kupienia.
+TYPE_IP_PASS = IP + Hasło
+TYPE_NICK_PASS = Nick + Hasło
+TYPE_STEAM_ID = SteamID
