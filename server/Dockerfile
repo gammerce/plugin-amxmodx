@@ -41,7 +41,7 @@ RUN curl -sqL "${CSTRIKE_URL}" | tar -C /home/steam/dedicated/cstrike/ -zxvf -
 RUN sed -i 's/admin.amxx.*/;admin.amxx/' /home/steam/dedicated/cstrike/addons/amxmodx/configs/plugins.ini
 
 # Add shopsms
-RUN sed -i '1s/^/sklep_sms.amxx debug\n/' /home/steam/dedicated/cstrike/addons/amxmodx/configs/plugins.ini
+RUN sed -i '1s/^/shopsms.amxx debug\n/' /home/steam/dedicated/cstrike/addons/amxmodx/configs/plugins.ini
 ADD cstrike/addons/amxmodx/data/lang/* /home/steam/dedicated/cstrike/addons/amxmodx/data/lang/
 ADD cstrike/addons/amxmodx/modules/* /home/steam/dedicated/cstrike/addons/amxmodx/modules/
 ADD cstrike/addons/amxmodx/configs/* /home/steam/dedicated/cstrike/addons/amxmodx/configs/

@@ -1,5 +1,5 @@
 #include <amxmodx>
-#include <shop_sms>
+#include <shopsms>
 
 #pragma semicolon 1
 
@@ -9,7 +9,7 @@ new szFlags[32 + 1];
 
 public plugin_init()
 {
-	register_plugin("Sklep-SMS: VIP PRO", VERSION, "SeeK");
+	register_plugin("Shop SMS: VIP PRO", VERSION, "SeeK");
 }
 
 public plugin_cfg()

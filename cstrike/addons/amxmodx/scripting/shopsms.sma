@@ -2,7 +2,7 @@
 #include <amxmisc>
 #include <curl>
 #include <nvault>
-#include <shop_sms_const>
+#include <shopsms_const>
 #include <custom_color_chat>
 
 #pragma semicolon 1
@@ -163,7 +163,7 @@ enum requestStruct {
 
 public plugin_natives()
 {
-	register_library("shop_sms");
+	register_library("shopsms");
 	register_native("ss_register_service", "native_registerService");
 	register_native("ss_show_service_purchase", "native_showServicePurchase");
 	register_native("ss_open_payment_method_menu", "native_openPaymentMethodMenu");
@@ -206,7 +206,7 @@ public plugin_precache()
 
 public plugin_init()
 {
-	register_plugin("Sklep SMS", VERSION, "SeeK");
+	register_plugin("Shop SMS", VERSION, "SeeK");
 	
 	register_dictionary("shopsms.txt");
 
@@ -1669,7 +1669,7 @@ _createShopSmsConfigFile()
 		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_on ^"1^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// Comma-separated commands list, which can be used via chat, to display the shop menu^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_shop_commands ^"/sklepsms,/shopsms^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_shop_commands ^"/shopsms,/sklepsms^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// Comma-separated commands list, which can be used via chat, to reload players flags^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_reload_commands ^"/przeladuj^"^n");

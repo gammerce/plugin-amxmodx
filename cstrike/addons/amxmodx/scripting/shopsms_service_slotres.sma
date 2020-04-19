@@ -1,15 +1,15 @@
 #include <amxmodx>
-#include <shop_sms>
+#include <shopsms>
 
 #pragma semicolon 1
 
-new const service_id[MAX_SERVICE_ID + 1] = "vip";
+new const service_id[MAX_SERVICE_ID + 1] = "resslot";
 
 new szFlags[32 + 1];
 
 public plugin_init()
 {
-	register_plugin("Sklep-SMS: VIP", VERSION, "SeeK");
+	register_plugin("Shop SMS: Slot reservation", VERSION, "SeeK");
 }
 
 public plugin_cfg()

@@ -1,15 +1,15 @@
 #include <amxmodx>
-#include <shop_sms>
+#include <shopsms>
 
 #pragma semicolon 1
 
-new const service_id[MAX_SERVICE_ID + 1] = "resslot";
+new const service_id[MAX_SERVICE_ID + 1] = "";
 
 new szFlags[32 + 1];
 
 public plugin_init()
 {
-	register_plugin("Sklep-SMS: Rezerwacja Slota", VERSION, "SeeK");
+	register_plugin("Shop SMS: Extra flags", VERSION, "SeeK");
 }
 
 public plugin_cfg()
@@ -24,10 +24,9 @@ public ss_service_data(name[], flags[])
 
 public ss_service_addingtolist(id)
 {
-	// Disable purchasing if the user already has a flag set
 	if (get_user_flags(id) & read_flags(szFlags) == read_flags(szFlags)) {
 		return ITEM_DISABLED;
 	}
-		
+
 	return ITEM_ENABLED;
 }

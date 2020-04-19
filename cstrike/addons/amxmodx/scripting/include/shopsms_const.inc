@@ -1,9 +1,9 @@
-#if defined _shop_sms_const_included
+#if defined _shopsms_const_included
     #endinput
 #endif
-#define _shop_sms_const_included
+#define _shopsms_const_included
 
-#pragma library "shop_sms_const"
+#pragma library "shopsms_const"
 
 #define VERSION "3.11.0-rc.1"
 

@@ -1,5 +1,5 @@
 #include <amxmodx>
-#include <shop_sms>
+#include <shopsms>
 
 native bf2_get_maxbadges();
 native bf2_get_badge_name(badge_id, badge_level, name[], len);
@@ -8,7 +8,7 @@ native bf2_set_user_badge(index, badge_id, level);
 
 #pragma semicolon 1
 
-#define PLUGIN "Sklep-SMS: BF2 Odznaki"
+#define PLUGIN "Shop SMS: BF2 badge"
 #define AUTHOR "SeeK"
 #define TASK_MENU1 1000
 

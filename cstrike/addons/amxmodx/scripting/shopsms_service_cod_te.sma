@@ -1,5 +1,5 @@
 #include <amxmodx>
-#include <shop_sms>
+#include <shopsms>
 #include <custom_color_chat>
 
 native cod_get_classes_num();
@@ -11,7 +11,7 @@ native cod_set_user_class(id, klasa, zmien=0);
 
 #pragma semicolon 1
 
-#define PLUGIN "Sklep-SMS: COD TE"
+#define PLUGIN "Shop SMS: COD TE"
 #define AUTHOR "SeeK"
 
 #define TASK_CHECK_FIRST 1000
