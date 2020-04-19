@@ -596,6 +596,9 @@ _stopPlugins()
 	}
 }
 
+/**
+ * Load players flags from API
+ */
 public loadPlayersFlags()
 {
 	new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1], url[MAX_URL + 1];
@@ -955,8 +958,7 @@ _openShopMenu(id)
 		new data[4];
 		data[0] = i + 1;
 		ArrayGetArray(g_services, i, service);
-		
-		// Sforamtuj punkt w menu
+
 		if (service[DESCRIPTION]) {
 			formatex(szText, charsmax(szText), "Kup %s \d(%s)", service[sNAME], service[DESCRIPTION]);
 		}
@@ -1021,8 +1023,7 @@ _openPricingMenu(id, service_id)
 	new price[e_Price];
 	for (new i = 0; i < ArraySize(g_prices); ++i) {
 		ArrayGetArray(g_prices, i, price);
-		
-		// ID usługi jest inne
+
 		if (!equali(price[pSERVICE_ID], service[sID])) {
 			continue;
 		}
@@ -1047,7 +1048,8 @@ _openPricingMenu(id, service_id)
 		);
 		
 		data[0] = service_id+1;
-		data[1] = min(127, i); // TODO: Problem przy ilosci uslug powyzej 256!
+		// Prices count limit is 256
+		data[1] = min(127, i);
 		data[2] = min(127, i-data[1]);
 		
 		menu_additem(menu, szText, data);
@@ -1056,13 +1058,12 @@ _openPricingMenu(id, service_id)
 	if (menu_items(menu) > 1) {
 		menu_display(id, menu);
 	}
-	// Jezeli jest tylko jeden item, przejdz od razu do informacji o smsie
+	// If there is only one element in the menu, let's choose it right away 
 	else if (menu_items(menu) == 1) {
 		which_service[id] = service_id;
 		which_price[id] = data[1]+data[2];
 		_openServiceTypeMenu(id);
 	}
-	// Zero
 	else {
 		client_print_color(id, Red, "^4[%s] ^1Brak cennika dla tej uslugi.", PREFIX);
 	}
@@ -1090,8 +1091,7 @@ _openServiceTypeMenu(id)
 	new service[e_Service];
 	ArrayGetArray(g_services, which_service[id], service);
 	
-	if (service[TYPES] & (TYPE_NICK|TYPE_IP|TYPE_SID)) {	
-		// Wyswietlamy menu z wyborem na co chcemy kupic usluge
+	if (service[TYPES] & (TYPE_NICK|TYPE_IP|TYPE_SID)) {
 		new menu = menu_create("Wybierz typ uslugi", "serviceTypeMenu_handler");
 		new menu_callback = menu_makecallback("serviceTypeMenu_callback");
 	
@@ -1463,16 +1463,14 @@ _handleServicePurchase(id)
 	new quantity[32 + 1];
 	_getPriceQuantity(which_price[id], which_service[id], quantity, charsmax(quantity));
 	
-	// Wystapil jakis blad
 	if (ret == SS_ERROR) {		
 		client_print_color(id, Red, "^4[%s] ^1Wystapil ^3blad ^1podczas kupowania uslugi. Zglos nam to: ^4%s", PREFIX, g_contact);
 		_logActor(id, "Wystapil blad podczas kupowania %s - %s; Kwota: %d", service[sNAME], quantity, price[SMS_PRICE]);
 		return;
 	}
 	
-	// Info w przypadku usługi na haslo
 	if (b_types[id] & (TYPE_NICK | TYPE_IP)) {
-		// Ustawienie hasla
+		// Set user a password
 		client_cmd(id, "setinfo _ss ^"%s^"", b_passwords[id]);
 		
 		formatex(g_szTemp, charsmax(g_szTemp), 
@@ -1499,9 +1497,9 @@ _handleServicePurchase(id)
 	
 	client_print_color(id, Blue, "^4[%s] ^1Prawidlowo zakupiono ^4%s^1: %s", PREFIX, service[sNAME], quantity);
 	
-	// Jezeli usluga ma flagi do ustawienia to wczytujemy ponownie dane z bazy
+	// If the service has flags assigned then let's reload players flags
+	// Reload has to be delayed a little bit so that user password would be loaded already
 	if (service[FLAGS]) {
-		// Musimy przeladowac z opoznieniem, aby dane uzytkownika zalapaly nowe haslo
 		set_task(2.0, "loadPlayersFlags");
 	}
 }
