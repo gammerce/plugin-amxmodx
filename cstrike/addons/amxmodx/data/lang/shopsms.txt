@@ -1,5 +1,21 @@
 [en]
+CHOOSE_SERVICE = Choose service:
+COMMERCIAL = We invite everyone to use ^3the store! ^1Just type: ^4%s
+CONTACT_US = In case of an issue contact us
 INVALID_PASSWORD = Invalid password
+LICENSE_VALIDATION_FAILED = License validation failed.
+SHOP_IS_BLOCKED = There are shop related errors. Check logs.
+SHOP_IS_DISABLED = Shop is ^3disabled^1.
+SHOP_SMS = Shop SMS
+NO_AVAILABLE_SERVICE = No services available for purchase.
 
 [pl]
-INVALID_PASSWORD = Nieprawidlowe haslo
+CHOOSE_SERVICE = Wybierz usługę:
+CONTACT_US = W razie problemów skontaktuj się z nami
+COMMERCIAL = Zapraszamy wszystkich do korzystania ze ^3sklepu! ^1Wystarczy wpisać: ^4%s
+INVALID_PASSWORD = Nieprawidlowe hasło
+LICENSE_VALIDATION_FAILED = Walidacja licencji nie powiodła się.
+SHOP_IS_BLOCKED = Wystąpiły błędy ze sklepem. Zobacz logi.
+SHOP_IS_DISABLE = Sklep jest obecnie ^3wylaczony^1.
+SHOP_SMS = Sklep SMS
+NO_AVAILABLE_SERVICE = Brak dostepnych uslug do kupienia.

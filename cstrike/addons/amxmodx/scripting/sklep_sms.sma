@@ -25,8 +25,8 @@ forward amxx_admin_access(id, flags, timestamp);
 #define KEYS (1<<0)|(1<<9) // Keys: 10
 
 // LOGS
-new const CFG_FILE[] = "sklep_sms.cfg";
-new const LOG_FILE[] = "sklep_sms.log";
+new const CFG_FILE[] = "shopsms.cfg";
+new const LOG_FILE[] = "shopsms.log";
 
 const MAX_COMMAND = 32;
 const MAX_CONTACT = 64;
@@ -69,8 +69,15 @@ new const VAULT_PLAYER_FLAGS_KEY[] = "player_flags";
 new forwrdClientAccess;
 
 // CVARs
-new cvar_on, cvar_show_info, cvar_sklep, cvar_przeladuj, cvar_uslugi, cvar_shop_url, cvar_token, cvar_silent_command;
-new show_info;
+new g_cvarOn,
+	g_cvarCommercial,
+	g_cvarShopCommands,
+	g_cvarReloadCommands,
+	g_cvarServicesCommands,
+	g_cvarSilentCommands,
+	g_cvarShopUrl,
+	g_cvarShopToken;
+
 new Trie:g_shopCommands,
 	Trie:g_serviceListCommands,
 	Trie:g_reloadCommands;
@@ -170,14 +177,14 @@ public plugin_precache()
 	
 	_createShopSmsConfigFile();
 	
-	cvar_on 	= register_cvar("sklepsms_on", "1");
-	cvar_sklep 	= register_cvar("sklepsms_sklep_komenda", "/sklepsms,/shopsms");
-	cvar_przeladuj 	= register_cvar("sklepsms_przeladuj_komenda", "/przeladuj");
-	cvar_uslugi 	= register_cvar("sklepsms_uslugi_komenda", "/uslugi");
-	cvar_show_info 	= register_cvar("sklepsms_info", "1");
-	cvar_shop_url 	= register_cvar("sklepsms_url", "");
-	cvar_token 	= register_cvar("sklepsms_token", "");
-	cvar_silent_command	= register_cvar("sklepsms_ciche_komendy", "0");
+	g_cvarOn = register_cvar("shopsms_on", "1");
+	g_cvarShopCommands = register_cvar("shopsms_shop_commands", "/shopsms,/sklepsms");
+	g_cvarReloadCommands = register_cvar("shopsms_reload_commands", "/przeladuj");
+	g_cvarServicesCommands = register_cvar("shopsms_services_commands", "/uslugi");
+	g_cvarCommercial = register_cvar("shopsms_commercial", "137");
+	g_cvarShopUrl = register_cvar("shopsms_url", "");
+	g_cvarShopToken = register_cvar("shopsms_token", "");
+	g_cvarSilentCommands = register_cvar("shopsms_silent_commands", "0");
 	
 	// Read config
 	if (file_exists(g_configPath)) {
@@ -214,8 +221,9 @@ public plugin_init()
 	register_clcmd("say", "sayHook");
 	register_clcmd("say_team", "sayHook");
 	
-	if (show_info) {
-		set_task(137.0, "displayCommercial", _, _, _, "b");
+	new Float:time = get_pcvar_float(g_cvarCommercial);
+	if (time) {
+		set_task(get_pcvar_float(g_cvarCommercial), "displayCommercial");
 	}
 
 	g_signature = random_num(1, 99999999);
@@ -270,16 +278,14 @@ public plugin_end()
 
 _loadCvars()
 {
-	get_pcvar_string(cvar_sklep, g_szTemp, charsmax(g_szTemp));
+	get_pcvar_string(g_cvarShopCommands, g_szTemp, charsmax(g_szTemp));
 	_explodeCommands(g_szTemp, g_shopCommands);
 
-	get_pcvar_string(cvar_przeladuj, g_szTemp, charsmax(g_szTemp));
+	get_pcvar_string(g_cvarReloadCommands, g_szTemp, charsmax(g_szTemp));
 	_explodeCommands(g_szTemp, g_reloadCommands);
 	
-	get_pcvar_string(cvar_uslugi, g_szTemp, charsmax(g_szTemp));
+	get_pcvar_string(g_cvarServicesCommands, g_szTemp, charsmax(g_szTemp));
 	_explodeCommands(g_szTemp, g_serviceListCommands);
-	
-	show_info = get_pcvar_num(cvar_show_info);
 }
 
 public client_authorized(id)
@@ -333,7 +339,7 @@ public sayHook(id)
 		_showPlayerServices(id);
 	}
 	
-	return get_pcvar_num(cvar_silent_command) ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
+	return get_pcvar_num(g_cvarSilentCommands) ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
 }
 
 //
@@ -924,71 +930,72 @@ _openShopMenu(id)
 	if (!is_user_connected(id)) {
 		return;
 	}
-	
-	if (!get_pcvar_num(cvar_on)) {
-		client_print_color(id, Red, "^4[%s] ^1Sklep jest obecnie ^3wylaczony^1.", PREFIX);
+
+	if (!get_pcvar_num(g_cvarOn)) {
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "SHOP_IS_DISABLED");
 		return;
 	}
-	
+
 	if (g_blocked) {
-		client_print_color(id, Red, "^4[%s] ^1Wystapily bledy ze sklepem, zobacz logi.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "SHOP_IS_BLOCKED");
 	}
-	
+
 	if (!ArraySize(g_services)) {
-		client_print_color(id, Red, "^4[%s] ^1Brak dostepnych uslug do kupienia.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "NO_AVAILABLE_SERVICE");
 		return;
 	}
-	
+
 	if (!g_licenseValidated) {
-		client_print_color(id, Red, "^4[%s] ^1Nie udalo sie przeprowadzic walidacji licencji.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "LICENSE_VALIDATION_FAILED");
 		return;
 	}
-	
-	new menu;
+
+	new menu_title[64];
 	if (g_footer) {
-		menu = menu_create("\rSklep SMS\d napedzany przez\w sklep-sms.pl^n\yWybierz usluge:", "shopMenu_handler");
+		formatex(menu_title, charsmax(menu_title), "\r%L\d powered by\w sklep-sms.pl^n\y%L", id, "SHOP_SMS", id, "CHOOSE_SERVICE");
 	} else {
-		menu = menu_create("\rSklep SMS^n\yWybierz usluge:", "shopMenu_handler");
+		formatex(menu_title, charsmax(menu_title), "\r%L^n\y%L", id, "SHOP_SMS", id, "CHOOSE_SERVICE");
 	}
-		
+
+	new menu = menu_create(menu_title, "shopMenu_handler");
 	new menu_callback = menu_makecallback("shopMenu_callback");
-	
-	new szText[64], service[e_Service];
+
+	new menu_text[64], service[e_Service];
 	for (new i = 0; i < ArraySize(g_services); ++i) {
 		new data[4];
 		data[0] = i + 1;
 		ArrayGetArray(g_services, i, service);
 
 		if (service[DESCRIPTION]) {
-			formatex(szText, charsmax(szText), "Kup %s \d(%s)", service[sNAME], service[DESCRIPTION]);
+			formatex(menu_text, charsmax(menu_text), "%s \d(%s)", service[sNAME], service[DESCRIPTION]);
 		}
 		else {
-			formatex(szText, charsmax(szText), "Kup %s", service[sNAME]);
+			formatex(menu_text, charsmax(menu_text), "%s", service[sNAME]);
 		}
-		
+
 		new ret;
 		new forward_handle = CreateOneForward(service[PLUGIN], "ss_service_addingtolist", FP_CELL);
 		ExecuteForward(forward_handle, ret, id);
 		DestroyForward(forward_handle);
-		
+
 		data[1] = ret;
-		
+
 		if (data[1] != ITEM_OFF) {
-			menu_additem(menu, szText, data, 0, menu_callback);
+			menu_additem(menu, menu_text, data, 0, menu_callback);
 		}
 	}
 
 	menu_display(id, menu);
-	
-	client_print_color(id, Red, "^4[%s] ^1W razie problemow mozesz sie z nami skontaktowac", PREFIX);
-	client_print_color(id, Red, "^4[%s] ^1poprzez: ^3%s", PREFIX, g_contact);
+
+	client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "CONTACT_US");
+	client_print_color(id, Red, "^4[%s] ^3%s", PREFIX, g_contact);
 }
 
 public shopMenu_callback(id, menu, item)
 {	
 	new data[4], zaccess, callback;
 	menu_item_getinfo(menu, item, zaccess, data, sizeof data, _, _, callback);
-	
+
 	return data[1] == ITEM_DISABLED ? ITEM_DISABLED : ITEM_ENABLED;
 }
 
@@ -998,10 +1005,10 @@ public shopMenu_handler(id, menu, item)
 		menu_destroy(menu);
 		return;
 	}
-	
+
 	new data[4], zaccess, callback;
 	menu_item_getinfo(menu, item, zaccess, data, sizeof data, _, _, callback);
-	
+
 	_openPricingMenu(id, data[0]-1);
 	menu_destroy(menu);
 }
@@ -1011,15 +1018,15 @@ _openPricingMenu(id, service_id)
 	if (!is_user_connected(id)) {
 		return;
 	}
-		
+
 	new service[e_Service];
 	new szText[64], data[3];
-	
+
 	ArrayGetArray(g_services, service_id, service);
 	formatex(szText, charsmax(szText), "\rSklep SMS^n\yWybierz ilosc %s:", service[sNAME]);
-	
+
 	new menu = menu_create(szText, "pricingMenu_handler");
-	
+
 	new price[e_Price];
 	for (new i = 0; i < ArraySize(g_prices); ++i) {
 		ArrayGetArray(g_prices, i, price);
@@ -1035,7 +1042,7 @@ _openPricingMenu(id, service_id)
 
 		new quantity[32 + 1];
 		_getPriceQuantity(i, service_id, quantity, charsmax(quantity));
-		
+
 		formatex(szText, charsmax(szText), 
 			"\y%s \wza %d.%s %s + VAT\d ( %d.%s %s )", 
 			quantity,
@@ -1046,7 +1053,7 @@ _openPricingMenu(id, service_id)
 			two_number_value(floatround(price[SMS_PRICE] * g_vat) %100),
 			g_currency
 		);
-		
+
 		data[0] = service_id+1;
 		// Prices count limit is 256
 		data[1] = min(127, i);
@@ -1054,7 +1061,7 @@ _openPricingMenu(id, service_id)
 		
 		menu_additem(menu, szText, data);
 	}
-	
+
 	if (menu_items(menu) > 1) {
 		menu_display(id, menu);
 	}
@@ -1075,13 +1082,13 @@ public pricingMenu_handler(id, menu, item)
 		menu_destroy(menu);
 		return;
 	}
-	
+
 	new data[4], zaccess, callback;
 	menu_item_getinfo(menu, item, zaccess, data, sizeof data, _, _, callback);
-	
+
 	which_service[id] = data[0] - 1;
 	which_price[id] = data[1] + data[2];
-	
+
 	_openServiceTypeMenu(id);
 	menu_destroy(menu);
 }
@@ -1090,19 +1097,19 @@ _openServiceTypeMenu(id)
 {
 	new service[e_Service];
 	ArrayGetArray(g_services, which_service[id], service);
-	
+
 	if (service[TYPES] & (TYPE_NICK|TYPE_IP|TYPE_SID)) {
 		new menu = menu_create("Wybierz typ uslugi", "serviceTypeMenu_handler");
 		new menu_callback = menu_makecallback("serviceTypeMenu_callback");
-	
+
 		menu_additem(menu, "Na Nick + haslo", "", 0, menu_callback);
 		menu_additem(menu, "Na IP + haslo", "", 0, menu_callback);
 		menu_additem(menu, "Na SteamID", "", 0, menu_callback);
-	
+
 		new data[4];
 		data[0] = id;
 		data[1] = menu;
-		
+
 		keepDisplayingMenu(data);
 	} else {
 		_serviceChosen(id);
@@ -1630,10 +1637,19 @@ _log(const format[], any:...)
 
 public displayCommercial()
 {	
-	if (get_playersnum() > 1) {
-		new command[MAX_COMMAND + 1];
-		_getShopCommand(command, charsmax(command));
-		client_print_color(0, Red, "^4[%s] ^1Zapraszamy wszystkich do korzystania ze ^3sklepu! ^1Wystarczy wpisac: ^4%s", PREFIX, command);
+	new command[MAX_COMMAND + 1];
+	_getShopCommand(command, charsmax(command));
+	
+	for (new id = 0; id < get_maxplayers(); ++id) {
+		if (is_user_connected(id)) {
+			client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "COMMERCIAL", command);
+		}
+	}
+
+	new Float:time = get_pcvar_float(g_cvarCommercial);
+
+	if (time) {
+		set_task(time, "displayCommercial");
 	}
 }
 
@@ -1644,38 +1660,38 @@ _createShopSmsConfigFile()
 	if (!file_exists(g_configPath)) {
 		new szText[1024], iLen=0, iMax=charsmax(szText);
 		iLen += formatex(szText[iLen], iMax-iLen, "// ----------------------------------^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// SKLEP SMS: - Plik Konfiguracyjny^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// SHOP SMS: - Configuration file^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// ----------------------------------^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Wlacza / Wylacza sklep^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// 1 - wlaczony^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// 0 - wylaczony^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_on ^"1^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Turn the shop On / Off^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// 1 - ON^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// 0 - OFF^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_on ^"1^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Lista komend oddzielonych przecinkiem, ktore mozna wpisac na chacie, w celu wyswietlenia menu sklepie^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_sklep_komenda ^"/sklepsms,/shopsms^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Comma-separated commands list, which can be used via chat, to display the shop menu^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_shop_commands ^"/sklepsms,/shopsms^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Lista komend oddzielonych przecinkiem, ktore mozna wpisac na chacie, w celu przeladowania flag wykupionych w sklepie^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_przeladuj_komenda ^"/przeladuj^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Comma-separated commands list, which can be used via chat, to reload players flags^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_reload_commands ^"/przeladuj^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Lista komend oddzielonych przecinkiem, ktore mozna wpisac na chacie, aby zobaczyc swoje aktywne uslugi^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_uslugi_komenda ^"/uslugi^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Comma-separated commands list, which can be used via chat, to display your active services^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_services_commands ^"/uslugi^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Czy po uzyciu powyzszych komend wyswietla sie one w chacie^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_ciche_komendy ^"0^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Should the above commands be visible on the chat after usage^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_silent_commands ^"0^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Wyswietlac informacje o sklepie na chacie?^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_info ^"1^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// How often (seconds) should the shop commercial be displayed on the chat? 0 - never^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_commercial ^"137^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// #####################^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// ###  Dane Sklepu  ###^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// ###   Shop WEB    ###^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// #####################^n^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Adres URL sklepu^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_url ^"^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Shop URL^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_url ^"^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "// Token serwera^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "sklepsms_token ^"^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "// Server token^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_token ^"^"^n");
 		write_file(g_configPath, szText);
 	}
 }
@@ -1900,7 +1916,7 @@ _getPriceQuantity(price_index, service_index, output[], len)
 
 _canUseShop()
 {
-	return !g_blocked && g_licenseValidated && get_pcvar_num(cvar_on);
+	return !g_blocked && g_licenseValidated && get_pcvar_num(g_cvarOn);
 }
 
 _canPayWithWallet(id)
@@ -1936,20 +1952,20 @@ _getShopCommand(output[], len)
 	}
 	TrieIterDestroy(iter);
 	#else
-	get_pcvar_string(cvar_sklep, g_szTemp, charsmax(g_szTemp));
+	get_pcvar_string(g_cvarShopCommands, g_szTemp, charsmax(g_szTemp));
 	copyc(output, len, g_szTemp, ',');
 	#endif
 }
 
 _getShopToken(output[], len)
 {
-	get_pcvar_string(cvar_token, output, len);
+	get_pcvar_string(g_cvarShopToken, output, len);
 	trim(output);
 }
 
 _getShopUrl(output[], len)
 {
-	get_pcvar_string(cvar_shop_url, output, len);
+	get_pcvar_string(g_cvarShopUrl, output, len);
 	trim(output);
 
 	// Remove trailing slash
