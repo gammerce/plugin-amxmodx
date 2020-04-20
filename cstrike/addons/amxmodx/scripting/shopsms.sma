@@ -212,8 +212,8 @@ public plugin_init()
 
 	register_menucmd(register_menuid("smsDetails"), KEYS, "smsDetails_handler");
 	register_concmd("Podaj_Kod_Zwrotny", "onSmsCodeEntered");
-	register_concmd("ssnick_Podaj_Haslo", "onNickPasswordEntered");
-	register_concmd("ssip_Podaj_Haslo", "onIpPasswordEntered");
+	register_concmd("ssnick_Password", "onNickPasswordEntered");
+	register_concmd("ssip_Password", "onIpPasswordEntered");
 	register_concmd("ss_reload", "command_reloadServerConfig");
 	register_concmd("ss_reload_players_flags", "command_reloadPlayersFlags");
 	register_concmd("ss_reassign_players_flags", "command_reassignPlayersFlags");
@@ -687,14 +687,14 @@ public command_reassignPlayersFlags()
 _sayCommand_reassignPlayersFlags(id)
 {
 	if (g_lastReassign + 10 > get_systime()) {
-		client_print_color(id, Red, "^4[%s] ^1Ktos przed chwila przeladowal liste. Odczekaj chwile.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "FLAGS_WERE_RELOADED_RECENTLY");
 		return;
 	}
 	
 	g_lastReassign = get_systime();
 	_reassignPlayersFlags();
 
-	client_print_color(id, Red, "^4[%s] ^1Prawidlowo przeladowano liste flag wykupionych w sklepie.", PREFIX);
+	client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "FLAGS_RELOADED");
 }
 
 /**
@@ -712,7 +712,7 @@ _reassignPlayersFlags()
 }
 
 /**
- * Funkcja sluzaca do dodania graczy do tablicy globalnej przechowujacej dane uprawnien graczy
+ * Add players flags to global array storing players' access.
  */
 _addUsersToGlobalArray()
 {
@@ -749,6 +749,9 @@ _addUsersToGlobalArray()
 		
 		global_player[pfTYPE] = admins_lookup(i, AdminProp_Flags);
 		global_player[pfFLAGS] = admins_lookup(i, AdminProp_Access);
+
+		// It is important to have sorted list of users, since we use binary search here
+		// to achieve O(nlogn) instead of O(n)
 		
 		new l = 0, p = ArraySize(local_users)-1, s;
 		while (l <= p) {
@@ -1044,14 +1047,10 @@ _openPricingMenu(id, service_id)
 		_getPriceQuantity(i, service_id, quantity, charsmax(quantity));
 
 		formatex(szText, charsmax(szText), 
-			"\y%s \w%d.%s %s + VAT\d ( %d.%s %s )", 
+			"\y%s \w%s + VAT\d ( %s )", 
 			quantity,
-			price[SMS_PRICE] / 100,
-			two_number_value(price[SMS_PRICE] % 100),
-			g_currency,
-			floatround(price[SMS_PRICE] * g_vat) / 100, 
-			two_number_value(floatround(price[SMS_PRICE] * g_vat) %100),
-			g_currency
+			format_price(price[SMS_PRICE]),
+			format_price(floatround(price[SMS_PRICE] * g_vat))
 		);
 
 		data[0] = service_id+1;
@@ -1143,10 +1142,10 @@ public serviceTypeMenu_handler(id, menu, item)
 
 	switch (item) {
 		case 0: {
-			client_cmd(id, "messagemode ssnick_Podaj_Haslo");
+			client_cmd(id, "messagemode ssnick_Password");
 		}
 		case 1: {
-			client_cmd(id, "messagemode ssip_Podaj_Haslo");
+			client_cmd(id, "messagemode ssip_Password");
 		}
 		case 2: {
 			_serviceChosen(id, TYPE_SID, "");
@@ -1160,7 +1159,7 @@ public onNickPasswordEntered(id)
 	read_argv(1, szPassword, charsmax(szPassword));
 	
 	if (!_serviceTypeMenu_checkPass(id, TYPE_NICK, szPassword)) {
-		client_cmd(id, "messagemode ssnick_Podaj_Haslo");
+		client_cmd(id, "messagemode ssnick_Password");
 	}
 }
 
@@ -1170,18 +1169,21 @@ public onIpPasswordEntered(id)
 	read_argv(1, szPassword, charsmax(szPassword));
 	
 	if (! _serviceTypeMenu_checkPass(id, TYPE_IP, szPassword)) {
-		client_cmd(id, "messagemode ssip_Podaj_Haslo");
+		client_cmd(id, "messagemode ssip_Password");
 	}
 }
 
 bool:_serviceTypeMenu_checkPass(id, type, const szPassword[MAX_PASSWORD + 1])
 {
-	if (strlen(szPassword) > 30) {
-		client_print(id, print_center, "Podane haslo jest za dlugie. Maksymalna ilosc znakow wynosi 30.");
+	new max_length = 30;
+	new min_length = 2;
+	
+	if (strlen(szPassword) > max_length) {
+		client_print(id, print_center, "%L", id, "PASSWORD_TOO_LONG", max_length);
 		return false;
 	}
-	else if (!strlen(szPassword)) {
-		client_print(id, print_center, "Haslo nie zostalo wprowadzone. Wprowadz je.");
+	else if (strlen(szPassword) < min_length) {
+		client_print(id, print_center, "%L", id, "PASSWORD_TOO_SHORT", min_length);
 		return false;
 	}
 	
@@ -1271,22 +1273,18 @@ _displaySmsDetails(id)
 	ArrayGetArray(g_smses, sms_index, sms);
 
 	_getPriceQuantity(which_price[id], which_service[id], quantity, charsmax(quantity));
-	
-	formatex(g_szTemp, charsmax(g_szTemp), "\r%L^n^n", id, "SHOP_SMS");
-	format(g_szTemp, charsmax(g_szTemp), "%sWybrales/as opcje zakupu %s ^n\wInfo: \y%s", g_szTemp, service[sNAME], quantity);
-	format(g_szTemp, charsmax(g_szTemp), 
-		"%s^n^n\rW celu dokonania zakupu, wyslij SMSa^n\wO tresci: \y%s^n\wNa numer: \y%s^n\wKoszt: \y%d.%s %s + VAT\d ( %d.%s %s )", 
-		g_szTemp,
+
+	formatex(g_szTemp, charsmax(g_szTemp),
+		"\r%L^n^n%L",
+		id, "SHOP_SMS",
+		id, "PAYMENT_SMS_INFO",
+		service[sNAME],
+		quantity,
 		g_smsText,
 		sms[NUMBER],
-		price[SMS_PRICE] / 100,
-		two_number_value(price[SMS_PRICE] % 100),
-		g_currency,
-		floatround(price[SMS_PRICE] * g_vat)/100, 
-		two_number_value(floatround(price[SMS_PRICE] * g_vat) % 100),
-		g_currency
+		format_price(price[SMS_PRICE]),
+		format_price(floatround(price[SMS_PRICE] * g_vat))
 	);
-	format(g_szTemp, charsmax(g_szTemp), "%s^n^n\wPo wyslaniu SMSa poczekaj na kod zwrotny.^nW celu wprowadzenia go, wcisnij: \y1^n^n\wAby wyjsc, wcisnij: \y0", g_szTemp);
 	
 	keepDisplayingSmsDetails(g_szTemp, TASK_KEEP_INFO_SMS + id);
 }
@@ -1315,7 +1313,7 @@ public smsDetails_handler(id, key)
 	if (key == 0) {
 		client_cmd(id, "messagemode Podaj_Kod_Zwrotny");
 	} else if (key == 9) {
-		client_print_color(id, Red, "^4[%s] ^1Transakcja zostala ^3przerwana^1.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "TRANSACTION_ABORTED");
 	}
 }
 
@@ -1328,7 +1326,7 @@ public onSmsCodeEntered(id)
 	new sms_code[MAX_CODE + 1];
 	read_argv(1, sms_code, charsmax(sms_code));
 	
-	_logActor(id, "Wprowadzono kod: %s", sms_code);
+	_logActor(id, "Entered sms code: %s", sms_code);
 	
 	if (!strlen(sms_code)) {
 		client_print_color(id, Red, "^4[%s] ^1Nie wprowadzono kodu zwrotnego.", PREFIX);
@@ -1737,7 +1735,7 @@ _validateLicense()
 	}
 	
 	if (!makeRequest("POST", "https://license.sklep-sms.pl/v1/authorization/server", headers, body, "onValidateLicenseResponse")) {
-		_errorForbidden("Brak miejsca w puli requestow");
+		_errorForbidden("There is no space in the request pool");
 	}
 }
 
@@ -1753,7 +1751,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	g_validationAttempt = true;
 
 	if (code != CURLE_OK) {
-		_log("Licencja nie zostala zwalidowana z nieznanych powodow. Error: %d", code);
+		_log("License hasn't been validated. Reason is unknown. Error: %d", code);
 		return;
 	}
 
@@ -1808,7 +1806,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	}
 
 	g_licenseValidated = true;
-	log_amx("Walidacja licencji zostala zakonczona pomyslnie.");
+	log_amx("License was validated.");
 }
 
 //
@@ -2295,16 +2293,26 @@ stock get_sms_cost(const number[])
 	return 0;
 }
 
+stock format_price(value)
+{
+	new price[32];
+	
+	formatex(price, charsmax(price), "%d.%s %s", two_number_value(value % 100), value / 100, two_number_value(value % 100), g_currency);
+	
+	return price;
+}
+
 stock two_number_value(value)
 {	
-	new temp[17];
+	new text[17];
+	
 	if (value < 10) {
-		formatex(temp, charsmax(temp), "0%d", value);
+		formatex(text, charsmax(text), "0%d", value);
 	} else {
-		formatex(temp, charsmax(temp), "%d", value);
+		formatex(text, charsmax(text), "%d", value);
 	}
 		
-	return temp;
+	return text;
 }
 
 stock groupDigits(a, output[], len)
