@@ -128,6 +128,7 @@ enum e_Price {
 	pSERVICE_ID[MAX_SERVICE_ID + 1], 
 	SMS_PRICE, 
 	QUANTITY, 
+	DISCOUNT, 
 };
 new Array:g_prices;
 
@@ -355,7 +356,7 @@ _loadServerConfig()
 	_getShopToken(shop_token, charsmax(shop_token));
 
 	headers = curl_slist_append(headers, "Accept: application/assoc");
-	formatex(url, charsmax(url), "%s/api/server/config?token=%s&version=%s&player_flags=1&language=polish", shop_url, shop_token, VERSION);
+	formatex(url, charsmax(url), "%s/api/server/config?token=%s&version=%s&player_flags=1&language=english", shop_url, shop_token, VERSION);
 
 	if (!makeRequest("GET", url, headers, "", "onLoadServerConfigResponse")) {
 		_errorConfigFailed(999);
@@ -481,6 +482,9 @@ _extractPrices(Trie:dict)
 
 		formatex(key, charsmax(key), "pr.%d.q", i);
 		TrieGetTextInt(dict, key, price[QUANTITY]);
+
+		formatex(key, charsmax(key), "pr.%d.d", i);
+		TrieGetTextInt(dict, key, price[DISCOUNT]);
 
 		ArrayPushArray(g_prices, price);
 	}
@@ -614,7 +618,7 @@ public loadPlayersFlags()
 	_getShopToken(shop_token, charsmax(shop_token));
 
 	headers = curl_slist_append(headers, "Accept: application/assoc");
-	formatex(url, charsmax(url), "%s/api/server/players_flags?token=%s&language=polish", shop_url, shop_token);
+	formatex(url, charsmax(url), "%s/api/server/players_flags?token=%s&language=english", shop_url, shop_token);
 	makeRequest("GET", url, headers, "", "onLoadPlayersFlagsResponse");
 }
 
@@ -1023,11 +1027,11 @@ _openPricingMenu(id, service_id)
 	}
 
 	new service[e_Service];
-	new szText[64], data[3];
+	new szText[128], data[3];
 
 	ArrayGetArray(g_services, service_id, service);
+	
 	formatex(szText, charsmax(szText), "\r%L^n\y%L", id, "SHOP_SMS", id, "CHOOSE_QUANTITY", service[sNAME]);
-
 	new menu = menu_create(szText, "pricingMenu_handler");
 
 	new price[e_Price];
@@ -1047,11 +1051,14 @@ _openPricingMenu(id, service_id)
 		_getPriceQuantity(i, service_id, quantity, charsmax(quantity));
 
 		formatex(szText, charsmax(szText), 
-			"\y%s \w%s + VAT\d ( %s )", 
+			"\y%s \w%s", 
 			quantity,
-			format_price(price[SMS_PRICE]),
 			format_price(floatround(price[SMS_PRICE] * g_vat))
 		);
+
+		if (price[DISCOUNT]) {
+			formatex(szText[strlen(szText)], charsmax(szText) - strlen(szText), " \r[-%d%%]", price[DISCOUNT]);
+		}
 
 		data[0] = service_id+1;
 		// Prices count limit is 256
@@ -1393,6 +1400,10 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		StringURLEncode(b_passwords[id], u_password, charsmax(u_password));
 		StringURLEncode(sms_code, u_sms_code, charsmax(u_sms_code));
 
+		// Get players's language
+		new language[16];
+		formatex(language, charsmax(language), "%L", id, "LANG");
+
 		// Calculate body sign
 		formatex(sign_body, charsmax(sign_body),
 			"%d#%s#%s#%s",
@@ -1409,7 +1420,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 			sign, u_service_id, b_types[id], u_auth_data, u_password, method, u_sms_code, price[pID], ip
 		);
 		
-		formatex(url, charsmax(url), "%s/api/server/purchase?token=%s&language=polish", shop_url, shop_token);
+		formatex(url, charsmax(url), "%s/api/server/purchase?token=%s&language=%s", shop_url, shop_token, language);
 	}
 
 	if (!makeRequest("POST", url, headers, body, "onPurchaseServiceResponse", id)) {
@@ -1538,6 +1549,12 @@ _showPlayerServices(id)
 	StringURLEncode(ip, escaped_ip, charsmax(escaped_ip));
 	StringURLEncode(steam_id, escaped_steam_id, charsmax(escaped_steam_id));
 
+	// Get players's language
+	new language[16];
+	formatex(language, charsmax(language), "%L", id, "LANG");
+
+	log_amx("Lang: %s", language);
+
 	new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1], url[MAX_URL + 1];
 	new curl_slist: headers;
 
@@ -1547,8 +1564,8 @@ _showPlayerServices(id)
 	headers = curl_slist_append(headers, "Accept: application/assoc");
 	formatex(
 		url, charsmax(url),
-		"%s/api/server/user_services?token=%s&nick=%s&ip=%s&steam_id=%s&language=polish",
-		shop_url, shop_token, escaped_name, escaped_ip, escaped_steam_id
+		"%s/api/server/user_services?token=%s&nick=%s&ip=%s&steam_id=%s&language=%s",
+		shop_url, shop_token, escaped_name, escaped_ip, escaped_steam_id, language
 	);
 
 	if (makeRequest("GET", url, headers, "", "onShowPlayerServicesResponse", id)) {
@@ -1832,20 +1849,12 @@ public keepDisplayingMenu(data[])
 
 _checkLoadedPlayersFlags()
 {	
-	if (!ArraySize(g_playersFlags)) {
-		log_amx("Nie zaladowano zadnych uslug graczy.");
-	} else {
-		log_amx("Zaladowano %d uslug graczy.", ArraySize(g_playersFlags));
-	}
+	log_amx("%d players services have been loaded.", ArraySize(g_playersFlags));
 }
 
 _checkLoadedServices()
-{	
-	if (!ArraySize(g_services)) {
-		log_amx("Nie zaladowano zadnych uslug do zakupienia.");
-	} else {
-		log_amx("Zaladowano %d uslug do zakupienia.", ArraySize(g_services));
-	}
+{
+	log_amx("%d services are ready to be purchased.", ArraySize(g_services));
 }
 
 _invalidPath(id, const path[])
@@ -2297,7 +2306,7 @@ stock format_price(value)
 {
 	new price[32];
 	
-	formatex(price, charsmax(price), "%d.%s %s", two_number_value(value % 100), value / 100, two_number_value(value % 100), g_currency);
+	formatex(price, charsmax(price), "%d.%s %s", value / 100, two_number_value(value % 100), g_currency);
 	
 	return price;
 }
