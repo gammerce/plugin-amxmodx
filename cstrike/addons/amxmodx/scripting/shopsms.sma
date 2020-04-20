@@ -1335,18 +1335,13 @@ public onSmsCodeEntered(id)
 	
 	_logActor(id, "Entered sms code: %s", sms_code);
 	
-	if (!strlen(sms_code)) {
-		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id "NO_SMS_CODE");
+	if (strlen(sms_code) < 2) {
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id "SMS_CODE_TOO_SHORT");
 		return;
 	}
 	
 	if (containi(sms_code, " ") != -1) {
-		client_print_color(id, Red, "^4[%s] ^1Kod zwrotny ^3nie moze ^1zawierac ^3spacji^1.", PREFIX);
-		return;
-	}
-	
-	if (strlen(sms_code) == 1 && containi(sms_code, "0") == 0) {
-		client_print_color(id, Red, "^4[%s] ^1Kod zwrotny ^3nie moze ^1byc rowny^3 0^1.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "SMS_CODE_NO_SPACE");
 		return;
 	}
 
@@ -1354,10 +1349,10 @@ public onSmsCodeEntered(id)
 }
 
 _purchaseService(id, const method[], const sms_code[] = "") {
-	client_print_color(id, Red, "^4[%s] ^1Trwa przeprowadzanie zakupu...", PREFIX);
+	client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "PURCHASE_IN_PROGRESS");
 
 	if (!_canUseShop()) {
-		client_print_color(id, Red, "^4[%s] ^1Sklep jest tymczaosowo nieaktywny.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "SHOP_IS_UNAVAILABLE");
 		return;
 	}
 	
@@ -1424,7 +1419,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 	}
 
 	if (!makeRequest("POST", url, headers, body, "onPurchaseServiceResponse", id)) {
-		client_print_color(id, Red, "^4[%s] ^1Nie udalo sie wykonac zapytania HTTP.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "PURCHASE_REQUEST_FAILED");
 	}
 }
 
@@ -1552,8 +1547,6 @@ _showPlayerServices(id)
 	// Get players's language
 	new language[16];
 	formatex(language, charsmax(language), "%L", id, "LANG");
-
-	log_amx("Lang: %s", language);
 
 	new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1], url[MAX_URL + 1];
 	new curl_slist: headers;
@@ -2086,7 +2079,7 @@ public task_displayLoading(task_id)
 	new id = task_id - TASK_DISPLAY_LOADING;
 
 	if (is_user_connected(id)) {
-		client_print_color(id, Red, "^4[%s] ^1Ladowanie...", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "LOADING");
 	}
 }
 
