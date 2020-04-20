@@ -1336,7 +1336,7 @@ public onSmsCodeEntered(id)
 	_logActor(id, "Entered sms code: %s", sms_code);
 	
 	if (!strlen(sms_code)) {
-		client_print_color(id, Red, "^4[%s] ^1Nie wprowadzono kodu zwrotnego.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id "NO_SMS_CODE");
 		return;
 	}
 	
