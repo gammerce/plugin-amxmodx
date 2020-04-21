@@ -1430,13 +1430,14 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 	}
 
 	if (code != CURLE_OK) {
+		// TODO Check how to get server language
 		_log("Zakup nie zostal sfinalizowany z nieznanych powodow. Error: %d", code);
-		client_print_color(playerId, Red, "^4[%s] ^1Zakup ^3nie zostal sfinalizowany ^1z nieznanych powodow. Error: %d", PREFIX, code);
+		client_print_color(playerId, Red, "^4[%s] ^1%L Error: %d", PREFIX, id, "PURCHASE_REQUEST_FAILED", code);
 		return;
 	}
 
 	if (statusCode >= 300) {
-		client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrocilo bledny HTTP code: %d", PREFIX, statusCode);
+		client_print_color(playerId, Red, "^4[%s] ^1%L HTTP code: %d", PREFIX, id, "PURCHASE_REQUEST_FAILED", statusCode);
 		return;
 	}
 
@@ -1452,21 +1453,26 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 		client_print_color(playerId, Red, "^4[%s] ^1%s", PREFIX, text);
 	} else {
 		_log("Invalid purchase response: %s", content);
-		client_print_color(playerId, Red, "^4[%s] ^1Wystapil blad. Brak odpowiedzi z serwera.", PREFIX);
+		client_print_color(playerId, Red, "^4[%s] ^1%L Invalid response.", PREFIX, id, "PURCHASE_REQUEST_FAILED");
 	}
 
 	if (equal(status, "warnings")) {
+		new title[64];
+		formated(title, charsmax(title), "%L", id, "PURCHASE_ERRORS");
 		formatex(g_szTemp, charsmax(g_szTemp), 
 			"<html>\
 			<head><meta http-equiv=^"Content-Type^" content=^"text/html^" charset=^"UTF-8^"></head>\
 			<body style=^"background-color: #0f0f0f; color: #ccc; font-size: 14px;^">\
-			<div style=^"text-align: center; font-size: 22px; font-weight: bold;^">Bledy ktore wystapily przy zakupie uslugi</div>\
+			<div style=^"text-align: center; font-size: 22px; font-weight: bold;^">%s</div>\
 			%s^n\
-			<i>Uzyj jeszcze raz tego samego kodu zwrotnego sms</i>.</body>\
-			</html>", 
-			warnings
+			<i>%L</i>.</body>\
+			</html>",
+			title,
+			warnings,
+			id,
+			"REUSE_SMS_CODE"
 		);
-		show_motd(playerId, g_szTemp, "Bledy przy zakupie uslugi");
+		show_motd(playerId, g_szTemp, title);
 	}
 	else if (equal(status, "purchased")) {
 		_handleServicePurchase(playerId);
@@ -1564,7 +1570,7 @@ _showPlayerServices(id)
 	if (makeRequest("GET", url, headers, "", "onShowPlayerServicesResponse", id)) {
 		set_task(0.0, "task_displayLoading", TASK_DISPLAY_LOADING + id);
 	} else {
-		client_print_color(id, Red, "^4[%s] ^1Niestety, nie udalo sie uzyskac informacji o Twoich uslugach.", PREFIX);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "LOAD_PLAYER_SERVICES_FAILED");
 	}
 }
 
@@ -1579,7 +1585,7 @@ public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode,
 	}
 	
 	if (code != CURLE_OK) {
-		client_print_color(playerId, Red, "^4[%s] ^1Niestety, nie udalo sie uzyskac informacji o Twoich uslugach. Error: %d", PREFIX, code);
+		client_print_color(playerId, Red, "^4[%s] ^1%L Error: %d", PREFIX, id, "LOAD_PLAYER_SERVICES_FAILED", code);
 		return;
 	}
 
