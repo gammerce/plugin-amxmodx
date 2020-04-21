@@ -179,7 +179,7 @@ public plugin_precache()
 	_createShopSmsConfigFile();
 	
 	g_cvarOn = register_cvar("shopsms_on", "1");
-	g_cvarShopCommands = register_cvar("shopsms_shop_commands", "/shopsms,/sklepsms");
+	g_cvarShopCommands = register_cvar("shopsms_shop_commands", "/sklepsms,/shopsms");
 	g_cvarReloadCommands = register_cvar("shopsms_reload_commands", "/przeladuj");
 	g_cvarServicesCommands = register_cvar("shopsms_services_commands", "/uslugi");
 	g_cvarCommercial = register_cvar("shopsms_commercial", "137");
@@ -1702,7 +1702,7 @@ _createShopSmsConfigFile()
 		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_on ^"1^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// Comma-separated commands list, which can be used via chat, to display the shop menu^n");
-		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_shop_commands ^"/shopsms,/sklepsms^"^n");
+		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_shop_commands ^"/sklepsms,/shopsms^"^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "// Comma-separated commands list, which can be used via chat, to reload players flags^n");
 		iLen += formatex(szText[iLen], iMax-iLen, "shopsms_reload_commands ^"/przeladuj^"^n");
