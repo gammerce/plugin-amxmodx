@@ -7,7 +7,7 @@
 
 #define VERSION "3.11.0-rc.1"
 
-#define PREFIX "SHOP-SMS"
+#define PREFIX "SKLEP-SMS"
 
 #define SS_OK -1
 #define SS_ERROR -2
