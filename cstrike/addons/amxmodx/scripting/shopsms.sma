@@ -244,7 +244,7 @@ public plugin_cfg()
 		server_exec();
 	} else {
 		// File was not created (probably due to invalid permissions)
-		_invalidPath(0, g_configPath);
+		_log("Couldn't create the file: %s. Probably due to lack of permissions. Create the file manually.", path);
 	}
 
 	new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1];
@@ -691,7 +691,7 @@ public command_reassignPlayersFlags()
 _sayCommand_reassignPlayersFlags(id)
 {
 	if (g_lastReassign + 10 > get_systime()) {
-		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "FLAGS_WERE_RELOADED_RECENTLY");
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "FLAGS_RELOADED_RECENTLY");
 		return;
 	}
 	
@@ -1048,7 +1048,7 @@ _openPricingMenu(id, service_id)
 		}
 
 		new quantity[32 + 1];
-		_getPriceQuantity(i, service_id, quantity, charsmax(quantity));
+		_getPriceQuantity(i, service_id, id, quantity, charsmax(quantity));
 
 		formatex(szText, charsmax(szText), 
 			"\y%s \w%s", 
@@ -1279,7 +1279,7 @@ _displaySmsDetails(id)
 	new sms_index = _getSmsIndexByPrice(price[SMS_PRICE]);
 	ArrayGetArray(g_smses, sms_index, sms);
 
-	_getPriceQuantity(which_price[id], which_service[id], quantity, charsmax(quantity));
+	_getPriceQuantity(which_price[id], which_service[id], id, quantity, charsmax(quantity));
 
 	formatex(g_szTemp, charsmax(g_szTemp),
 		"\r%L^n^n%L",
@@ -1432,12 +1432,12 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 	if (code != CURLE_OK) {
 		// TODO Check how to get server language
 		_log("Zakup nie zostal sfinalizowany z nieznanych powodow. Error: %d", code);
-		client_print_color(playerId, Red, "^4[%s] ^1%L Error: %d", PREFIX, id, "PURCHASE_REQUEST_FAILED", code);
+		client_print_color(playerId, Red, "^4[%s] ^1%L ^1Error: %d", PREFIX, id, "PURCHASE_REQUEST_FAILED", code);
 		return;
 	}
 
 	if (statusCode >= 300) {
-		client_print_color(playerId, Red, "^4[%s] ^1%L HTTP code: %d", PREFIX, id, "PURCHASE_REQUEST_FAILED", statusCode);
+		client_print_color(playerId, Red, "^4[%s] ^1%L ^1HTTP code: %d", PREFIX, id, "PURCHASE_REQUEST_FAILED", statusCode);
 		return;
 	}
 
@@ -1453,7 +1453,7 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 		client_print_color(playerId, Red, "^4[%s] ^1%s", PREFIX, text);
 	} else {
 		_log("Invalid purchase response: %s", content);
-		client_print_color(playerId, Red, "^4[%s] ^1%L Invalid response.", PREFIX, id, "PURCHASE_REQUEST_FAILED");
+		client_print_color(playerId, Red, "^4[%s] ^1%L ^1Invalid response.", PREFIX, id, "PURCHASE_REQUEST_FAILED");
 	}
 
 	if (equal(status, "warnings")) {
@@ -1469,8 +1469,7 @@ public onPurchaseServiceResponse(const content[], CURLcode: code, statusCode, pl
 			</html>",
 			title,
 			warnings,
-			id,
-			"REUSE_SMS_CODE"
+			id, "REUSE_SMS_CODE"
 		);
 		show_motd(playerId, g_szTemp, title);
 	}
@@ -1490,13 +1489,16 @@ _handleServicePurchase(id)
 	DestroyForward(forward_handle);
 
 	new quantity[32 + 1];
-	_getPriceQuantity(which_price[id], which_service[id], quantity, charsmax(quantity));
+	_getPriceQuantity(which_price[id], which_service[id], id, quantity, charsmax(quantity));
 	
 	if (ret == SS_ERROR) {		
-		client_print_color(id, Red, "^4[%s] ^1Wystapil ^3blad ^1podczas kupowania uslugi. Zglos nam to: ^4%s", PREFIX, g_contact);
-		_logActor(id, "Wystapil blad podczas kupowania %s - %s; Kwota: %d", service[sNAME], quantity, price[SMS_PRICE]);
+		client_print_color(id, Red, "^4[%s] ^1%L", PREFIX, id, "PURCHASE_FAILED", g_contact);
+		_logActor(id, "Purchase error. Service: [%s] Quantity: [%s] Price: [%d]", service[sNAME], quantity, price[SMS_PRICE]);
 		return;
 	}
+
+	new title[64];
+	formatex(title, charsmax(title), "%L", id, "PURCHASE_DETAILS");
 	
 	if (b_types[id] & (TYPE_NICK | TYPE_IP)) {
 		// Set user a password
@@ -1504,27 +1506,33 @@ _handleServicePurchase(id)
 		
 		formatex(g_szTemp, charsmax(g_szTemp), 
 			"<html><body style=^"background-color: #0f0f0f; color: #ccc; font-size: 14px;^"><center><br /><br />\
-			<h1>Wykupiles/as usluge: <span style=^"color: red^">%s</span><br /><br />\
-			Aby usluga dziala, dodaj wpis do pliku <i>config.cfg</>:<br />\
+			<h1>%L <span style=^"color: red^">%s</span><br /><br />\
+			%L<br />\
 			<span style=^"color: #3399ff^">setinfo _ss ^"%s^"</span><br /><br />\
-			W razie problemow skontaktuj sie z nami.\
-			</center></body></html>", 
-			service[sNAME], b_passwords[id]
+			%L\
+			</center></body></html>",
+			id, "PURCHASE_SUCCEED",
+			service[sNAME],
+			id, "SETINFO_INSTRUCTION", "<i>config.cfg</i>",
+			b_passwords[id],
+			id, "CONTACT_US"
 		);
-		show_motd(id, g_szTemp, "Informacje dotyczace uslugi");
+		show_motd(id, g_szTemp, title);
 	}
 	else if (b_types[id] & TYPE_SID) {
 		formatex(g_szTemp, charsmax(g_szTemp), 
 			"<html><body style=^"background-color: #0f0f0f; color: #ccc; font-size: 14px;^"><center><br /><br />\
-			<h1>Wykupiles/as usluge: <span style=^"color: red^">%s</span><br /><br />\
-			W razie problemow skontaktuj sie z nami.\
-			</center></body></html>", 
-			service[sNAME]
+			<h1>%L <span style=^"color: red^">%s</span><br /><br />\
+			%L\
+			</center></body></html>",
+			id, "PURCHASE_SUCCEED",
+			service[sNAME],
+			id, "CONTACT_US"
 		);
-		show_motd(id, g_szTemp, "Informacje dotyczace uslugi");
+		show_motd(id, g_szTemp, title);
 	}
 	
-	client_print_color(id, Blue, "^4[%s] ^1Prawidlowo zakupiono ^4%s^1: %s", PREFIX, service[sNAME], quantity);
+	client_print_color(id, Blue, "^4[%s] ^1%L ^4%s^1: %s", PREFIX, id, "PURCHASE_SUCCEED", service[sNAME], quantity);
 	
 	// If the service has flags assigned then let's reload players flags
 	// Reload has to be delayed a little bit so that user password would be loaded already
@@ -1585,23 +1593,24 @@ public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode,
 	}
 	
 	if (code != CURLE_OK) {
-		client_print_color(playerId, Red, "^4[%s] ^1%L Error: %d", PREFIX, id, "LOAD_PLAYER_SERVICES_FAILED", code);
+		client_print_color(playerId, Red, "^4[%s] ^1%L ^1Error: %d", PREFIX, id, "LOAD_PLAYER_SERVICES_FAILED", code);
 		return;
 	}
 
 	if (statusCode >= 300) {
-		client_print_color(playerId, Red, "^4[%s] ^1Zapytanie zwrocilo bledny HTTP code: %d.", PREFIX, statusCode);
+		client_print_color(playerId, Red, "^4[%s] ^1%L ^1HTTP code %d.", PREFIX, id, "PLAYER_SERVICES_REQUEST_FAILED", statusCode);
 		return;
 	}
 
-	new count, key[MAX_CONFIG_KEY + 1];
-	new menu = menu_create("Twoje obecne uslugi", "showPlayerServices_handler");
+	new count, key[MAX_CONFIG_KEY + 1], menu_title[64];
+	formatex(menu_title, charsmax(menu_title), "%L", id, "ACTIVE_PLAYER_SERVICES");
+	new menu = menu_create(menu_title, "showPlayerServices_handler");
 
 	new Trie:dict = _createResponseDict(content);
 
 	if (!TrieGetTextInt(dict, "c", count)) {
-		_log("Invalid user services response. | %s", content);
-		client_print_color(playerId, Red, "^4[%s] ^1Nieprawidlowa odpowiedz serwera. Zglos problem opiekunowi serwera.", PREFIX);
+		_log("Invalid player services response. | %s", content);
+		client_print_color(playerId, Red, "^4[%s] ^1%L ^1Invalid response", PREFIX, id, "PLAYER_SERVICES_REQUEST_FAILED");
 		TrieDestroy(dict);
 		return;
 	}
@@ -1615,7 +1624,7 @@ public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode,
 		formatex(key, charsmax(key), "%d.e", i);
 		TrieGetString(dict, key, expire, charsmax(expire));
 
-		formatex(item_text, charsmax(item_text), "%s - wygasa: %s", service_name, expire);
+		formatex(item_text, charsmax(item_text), "%L", id, "PLAYER_SERVICE_INFO", service_name, expire);
 		menu_additem(menu, item_text);
 	}
 
@@ -1627,7 +1636,7 @@ public onShowPlayerServicesResponse(const content[], CURLcode: code, statusCode,
 	else {
 		new command[MAX_COMMAND + 1];
 		_getShopCommand(command, charsmax(command));
-		client_print_color(playerId, Red, "^4[%s] ^1Nie masz jeszcze ^3zadnej uslugi^1. Moze czas to zmienic? ;-) Wpisz: ^3%s", PREFIX, command);
+		client_print_color(playerId, Red, "^4[%s] ^1%L", PREFIX, id, "NO_PLAYER_SERVICES", command);
 	}
 }
 
@@ -1856,15 +1865,6 @@ _checkLoadedServices()
 	log_amx("%d services are ready to be purchased.", ArraySize(g_services));
 }
 
-_invalidPath(id, const path[])
-{
-	_log("Nie mozna utworzyc pliku/folderu: %s. Prawdopodonbnie brak uprawnien do zapisu. Utworz plik recznie.", path);
-	
-	if (id) {
-		client_print_color(id, Blue, "^4[%s] ^1Wystapil ^3blad ^1przy zapisywaniu ustawien. Prawdopodobnie ^4brak uprawnien^1.", PREFIX);
-	}
-}
-
 _getServicePluginByID(const id[])
 {
 	new tmp[MAX_SERVICE_ID + 1];
@@ -1914,7 +1914,7 @@ _getOrderOfType(type)
 	return 0;
 }
 
-_getPriceQuantity(price_index, service_index, output[], len)
+_getPriceQuantity(price_index, service_index, player_id, output[], len)
 {
 	new price[e_Price];
 	new service[e_Service];
@@ -1923,12 +1923,11 @@ _getPriceQuantity(price_index, service_index, output[], len)
 	ArrayGetArray(g_services, service_index, service);
 
 	if (price[QUANTITY] == -1) {
-		formatex(output, len, "Na zawsze");
+		formatex(output, len, "%L", player_id, "FOREVER");
 	}
 	else {
-		new temp[32 + 1];
-		groupDigits(price[QUANTITY], temp, charsmax(temp));
-		formatex(output, len, "%s %s", temp, service[TAG]);
+		groupDigits(price[QUANTITY], output, len);
+		formatex(output[strlen(output)], len - strlen(output), "%s", service[TAG]);
 	}
 }
 
@@ -2017,6 +2016,8 @@ _explodeCommands(const text[], Trie:dict)
 //
 // ------------------------------------------------- ERRORS ----------------------------------------------------
 //
+
+// TODO Translate errors
 
 // License
 _errorUnknown() {
@@ -2205,7 +2206,7 @@ runRequestCallback(const function[], const httpResponseContent[], playerId, CURL
 public native_registerService(plugin, params)
 {	
 	if (params != 1) {
-		_log("Wystapil blad podczas dodawania uslugi. Bledna ilosc argumentow funkcji ss_register_service");
+		_log("An error occurred while registering the service. Invalid number of arguments passed to the ss_register_service function.");
 		return SS_BAD_ARGS;
 	}
 		
