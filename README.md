@@ -1,56 +1,56 @@
 # [Sklep SMS](https://sklep-sms.pl/) [![Release](https://img.shields.io/github/v/release/gammerce/plugin-amxmodx)](https://github.com/gammerce/plugin-amxmodx/releases/latest)
 
-Plugin AMX Mod X do Sklepu SMS, który umożliwia dokonywanie zakupow z serwera.
+AMX Mod X plugin that allows players to make purchases using Sklep-SMS. 
 
-[Instrukcja instalacji](https://github.com/gammerce/plugin-amxmodx/wiki/Konfiguracja-pluginu)
+[Installation Guide](https://github.com/gammerce/plugin-amxmodx/wiki/Konfiguracja-pluginu)
 
-## Wymagania
+## Requirements
 * AMX Mod X 1.8.2+
-* Moduł CURL
+* CURL module
 
-## Lista obsługiwanych gier
+## Supported video games
 * Counter-Strike v1.6
 
-## Lista domyślnie dostępnych usług
+## Default services
 * VIP
 * VIP PRO
-* Rezerwacja Nicku
-* Rezerwacja Slota
-* Niestandardowe usługi oparte na nadawaniu graczowi flag ( np. klasy Premium ) - [Instrukcja](https://github.com/gammerce/plugin-amxmodx/wiki/Utworzenie-us%C5%82ugi-nadaj%C4%85cej-graczowi-flagi)
+* Nick reservation
+* Slot reservation
+* Custom services based on player flags ( eg. premium classes ) - [Manual](https://github.com/gammerce/plugin-amxmodx/wiki/Utworzenie-us%C5%82ugi-nadaj%C4%85cej-graczowi-flagi)
 * CoD: EXP
-* CoD: Przeniesienie EXPa
+* CoD: EXP Transfer
 * GXM: EXP
 * ZP: Bezlitosne monety
 * ZP: Ammo Packs
-* BF2: Odznaki ( wymaga edycji kodu ) - [Instrukcja](https://github.com/gammerce/plugin-amxmodx/wiki/Dodanie-us%C5%82ugi-BF2:-Odznaki)
+* BF2: Odznaki ( code edition required ) - [Manual](https://github.com/gammerce/plugin-amxmodx/wiki/Dodanie-us%C5%82ugi-BF2:-Odznaki)
 
-## Komendy chatu
+## Chat commands
 
 #### /sklepsms
-Otwiera menu sklepu
+Open Sklep-SMS menu
 
 #### /uslugi
-Wyświetla aktywne usługi gracza
+Show players active services
 
 #### /przeladuj
-Wymusza przeładowanie usług wykupionych w sklepie
+Reload players flags
 
 ## CVARs
 
-#### sklepsms_on "1"
-Włącza (1) / wyłącza (0) sklep
+#### shopsms_on "1"
+Turn the shop On (1) / Off (0)
 
-#### sklepsms_sklep_komenda "/sklepsms,/shopsms"
-Lista [komend](https://github.com/gammerce/plugin-amxmodx#sklepsms) oddzielonych przecinkiem, które można wpisać na chacie, w celu wyświetlenia menu sklepu.
+#### shopsms_shop_commands "/sklepsms,/shopsms"
+Comma-separated commands list, which can be used via chat, to display the shop menu
 
-#### sklepsms_przeladuj_komenda "/uslugi"
-Lista [komend](https://github.com/gammerce/plugin-amxmodx#uslugi) oddzielonych przecinkiem, które można wpisać na chacie, w celu wyświetlenie usług wykupionych w sklepie.
+#### shopsms_services_commands "/uslugi"
+Comma-separated commands list, which can be used via chat, to display your active services
 
-#### sklepsms_przeladuj_komenda "/przeladuj"
-Lista [komend](https://github.com/gammerce/plugin-amxmodx#przeladuj) oddzielonych przecinkiem, które można wpisać na chacie, w celu przeładowania usług wykupionych w sklepie.
+#### shopsms_reload_commands "/przeladuj"
+Comma-separated commands list, which can be used via chat, to reload players flags
 
-#### sklepsms_info "1"
-Czy wyswietlać informację o sklepie na chacie?
+#### shopsms_silent_commands "0"
+Should the above commands be visible on the chat after usage.
 
-#### sklepsms_ciche_komendy "0"
-Czy ukrywać na chacie komendy sklepu, które użytkownik wpisuje.
+#### shopsms_commercial "137"
+How often (seconds) should the shop commercial be displayed on the chat? 0 - never
