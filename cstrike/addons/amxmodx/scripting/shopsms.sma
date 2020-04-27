@@ -1829,7 +1829,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	}
 
 	g_licenseValidated = true;
-	log_amx("License was validated.");
+	log_amx("%L", 0, "LICENSE_VALIDATED");
 }
 
 //
@@ -1855,12 +1855,12 @@ public keepDisplayingMenu(data[])
 
 _checkLoadedPlayersFlags()
 {	
-	log_amx("%d players services have been loaded.", ArraySize(g_playersFlags));
+	log_amx("%L", 0, "PLAYER_SERVICES_LOADED", ArraySize(g_playersFlags));
 }
 
 _checkLoadedServices()
 {
-	log_amx("%d services are ready to be purchased.", ArraySize(g_services));
+	log_amx("%L", 0, "SERVICES_LOADED", ArraySize(g_services));
 }
 
 _getServicePluginByID(const id[])
@@ -2015,64 +2015,56 @@ _explodeCommands(const text[], Trie:dict)
 // ------------------------------------------------- ERRORS ----------------------------------------------------
 //
 
-// TODO Translate errors
-
 // License
 _errorUnknown() {
-	_log("Error 10 - Wystapil blad podczas odczytywania odpowiedzi od serwera walidujacego licencje. Zobacz logi.");
 	g_blocked = true;
+	_log("%L", 0, "ERROR_10");
 }
 
 _errorLicenseInvalidResponse(statusCode) {
-	_log("Error 11 - Serwer walidacyjny zwrocil bledny HTTP CODE %d.", statusCode);
 	g_blocked = true;
+	_log("%L", 0, "ERROR_11", statusCode);
 }
 
 _errorValidationError() {
-	_log("Error 12 - Walidacja wyslanych danych do serwera walidacyjnego nie powiodla sie.");
 	g_blocked = true;
+	_log("%L", 0, "ERROR_12");
 }
 
 _errorInvalidToken() {
-	_log("Error 13 - Bledny token licencji.");
 	g_blocked = true;
+	_log("%L", 0, "ERROR_13");
 }
 
 _errorPaymentRequired() {
-	_make_error("Error 14 - Licencja nie wspiera tego typu serwera lub przekroczono limit stron WWW.");
+	set_fail_state("%L", 0, "ERROR_14");
 }
 
 _errorForbidden(const text[] = "") {
-	new message[128 + 1];
-	formatex(message, charsmax(message), "Error 15 - Blad licencji. %s", text);
-	_make_error(message);
+	set_fail_state("%L", 0, "ERROR_15", text);
 }
 
 // Config
 _errorConfigFailed(code) {
-	_log("Error 20 - Nie udalo sie pobrac konfiguracji serwera. Error: %d", code);
 	g_blocked = true;
+	_log("%L", 0, "ERROR_20", code);
 }
 
 _errorNoServer() {
-	_make_error("Error 21 - Bledny token serwera.");
+	set_fail_state("%L", 0, "ERROR_21");
 }
 
 _errorOutdatedVersion() {
-	_make_error("Error 22 - Obecna wersja pluginu nie jest juz wspierana. Dokonaj aktualizacji pluginu.");
+	set_fail_state("%L", 0, "ERROR_22");
 }
 
 _errorConfigInvalidResponse() {
-	_log("Error 23 - Wystapil blad podczas ladowania konfiguracji serwera.");
 	g_blocked = true;
+	_log("%L", 0, "ERROR_23");
 }
 
 _errorNoShopCreds() {
-	_make_error("Error 24 - Nie podano danych sklepu: URL lub token.");
-}
-
-_make_error(message[]) {
-	set_fail_state(message);
+	set_fail_state("%L", 0, "ERROR_24");
 }
 
 //
@@ -2166,7 +2158,7 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 	if (code != CURLE_OK) {
 		new szError[128];
 		curl_easy_strerror(code, szError, charsmax(szError));
-		_log("CURL error: %d %s", code, szError);
+		_log("CURL error: [%d] %s", code, szError);
 	}
 
 	new statusCode;
@@ -2182,7 +2174,7 @@ bool:makeRequest(const method[], const url[MAX_URL + 1], const curl_slist: heade
 runRequestCallback(const function[], const httpResponseContent[], playerId, CURLcode: code, statusCode)
 {
 	#if defined IS_DEBUG
-	_log("Request response | %d %d %s", code, statusCode, httpResponseContent);
+	_log("Request response | [%d] [%d] %s", code, statusCode, httpResponseContent);
 	#endif
 
 	if (!strlen(function) || callfunc_begin(function) == 1) {

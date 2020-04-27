@@ -593,8 +593,8 @@ checkAccess(id, index, name[], ip[], authid[], AuthData[], Flags, password[], pa
 			new password3[33], md5_password[34], md5_password2[34];
 			admins_lookup(index,AdminProp_Password,password3,charsmax(password3));
 			
-			md5(password,md5_password);
-			md5(password2,md5_password2);
+			vc_md5(password,md5_password);
+			vc_md5(password2,md5_password2);
 
 			//log_amx("%s %s %s %s %s",password,md5_password,password2,md5_password2,password3);
 			if ( equal(password, password3) || equal(md5_password, password3) || equal(password2, password3) || equal(md5_password2, password3) )
@@ -730,7 +730,7 @@ public client_infochanged(id)
 	return PLUGIN_CONTINUE
 }
 
-public client_disconnect(id)
+public client_disconnected(id)
 {
 	if(g_isAdmin[id])
 	{
@@ -787,4 +787,13 @@ public native_amxbans_static_bantime()
 	new id = get_param(1)
 	if(get_cvar_num("amxbans_debug") >= 3) log_amx("[AMXBans Core] Native static bantime: id: %d | result: %d",id,g_iAdminUseStaticBantime[id])
 	return g_iAdminUseStaticBantime[id]
+}
+
+vc_md5(const szString[], md5buffer[34])
+{
+	#if defined hash_string
+	hash_string(szString, Hash_Md5, md5buffer, 34);
+	#else
+	md5(szString, md5buffer);
+	#endif
 }
