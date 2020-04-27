@@ -370,8 +370,8 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 		return;
 	}
 
-	if (statusCode == 404 || statusCode == 400) {
-		_errorNoServer();
+	if (statusCode == 400) {
+		_errorInvalidServerToken();
 		return;
 	}
 
@@ -629,7 +629,7 @@ public onLoadPlayersFlagsResponse(const content[], CURLcode: code, statusCode, p
 	}
 
 	if (statusCode == 400) {
-		_errorNoServer();
+		_errorInvalidServerToken();
 		return;
 	}
 
@@ -1779,7 +1779,7 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	}
 
 	if (statusCode == 401) {
-		_errorInvalidToken();
+		_errorInvalidLicenseToken();
 		return;
 	}
 
@@ -2031,7 +2031,7 @@ _errorValidationError() {
 	_log("%L", 0, "ERROR_12");
 }
 
-_errorInvalidToken() {
+_errorInvalidLicenseToken() {
 	g_blocked = true;
 	_log("%L", 0, "ERROR_13");
 }
@@ -2050,7 +2050,7 @@ _errorConfigFailed(code) {
 	_log("%L", 0, "ERROR_20", code);
 }
 
-_errorNoServer() {
+_errorInvalidServerToken() {
 	set_fail_state("%L", 0, "ERROR_21");
 }
 
