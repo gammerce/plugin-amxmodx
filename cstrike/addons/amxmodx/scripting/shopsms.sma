@@ -356,7 +356,7 @@ _loadServerConfig()
 	_getShopToken(shop_token, charsmax(shop_token));
 
 	headers = curl_slist_append(headers, "Accept: application/assoc");
-	formatex(url, charsmax(url), "%s/api/server/config?token=%s&version=%s&player_flags=1&language=english", shop_url, shop_token, VERSION);
+	formatex(url, charsmax(url), "%s/api/server/config?token=%s&version=%s&language=english", shop_url, shop_token, VERSION);
 
 	if (!makeRequest("GET", url, headers, "", "onLoadServerConfigResponse")) {
 		_errorConfigFailed(999);
@@ -381,7 +381,7 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 	}
 
 	if (statusCode >= 300) {
-		_log("Invalid server config response HTTP code | %d", statusCode);
+		_log("Invalid server config response HTTP code [%d]", statusCode);
 		_errorConfigInvalidResponse();
 		return;
 	}
