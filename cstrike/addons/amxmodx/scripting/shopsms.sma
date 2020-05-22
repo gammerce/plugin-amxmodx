@@ -2037,11 +2037,15 @@ _errorInvalidLicenseToken() {
 }
 
 _errorPaymentRequired() {
-	set_fail_state("%L", 0, "ERROR_14");
+	_throwError("ERROR_14");
 }
 
 _errorForbidden(const text[] = "") {
+	#if AMXX_VERSION_NUM > 182
 	set_fail_state("%L", 0, "ERROR_15", text);
+	#else
+	set_fail_state("ERROR_15");
+	#endif
 }
 
 // Config
@@ -2051,11 +2055,11 @@ _errorConfigFailed(code) {
 }
 
 _errorInvalidServerToken() {
-	set_fail_state("%L", 0, "ERROR_21");
+	_throwError("ERROR_21");
 }
 
 _errorOutdatedVersion() {
-	set_fail_state("%L", 0, "ERROR_22");
+	_throwError("ERROR_22");
 }
 
 _errorConfigInvalidResponse() {
@@ -2064,7 +2068,16 @@ _errorConfigInvalidResponse() {
 }
 
 _errorNoShopCreds() {
-	set_fail_state("%L", 0, "ERROR_24");
+	_throwError("ERROR_24");
+}
+
+_throwError(const error[])
+{
+	#if AMXX_VERSION_NUM > 182
+	set_fail_state("%L", 0, error);
+	#else
+	set_fail_state(error);
+	#endif
 }
 
 //
