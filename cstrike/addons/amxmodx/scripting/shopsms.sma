@@ -2041,8 +2041,6 @@ _errorPaymentRequired() {
 	_throwError("ERROR_14");
 }
 
-_error
-
 _errorForbidden(const text[] = "") {
 	#if AMXX_VERSION_NUM > 182
 	set_fail_state("%L", 0, "ERROR_15", text);
