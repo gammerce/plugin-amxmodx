@@ -1774,7 +1774,8 @@ public onValidateLicenseResponse(const content[], CURLcode: code, statusCode, pl
 	g_validationAttempt = true;
 
 	if (code != CURLE_OK) {
-		_log("License hasn't been validated. Reason is unknown. Error: %d", code);
+		_log("Invalid CURL code: %d", code);
+		_errorUnknown();
 		return;
 	}
 
@@ -2039,6 +2040,8 @@ _errorInvalidLicenseToken() {
 _errorPaymentRequired() {
 	_throwError("ERROR_14");
 }
+
+_error
 
 _errorForbidden(const text[] = "") {
 	#if AMXX_VERSION_NUM > 182
