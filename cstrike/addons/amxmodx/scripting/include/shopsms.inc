@@ -14,9 +14,16 @@ native ss_register_service(const service_id[]);
  * service_id[] - Unique service ID
 ------------------------------*/
 
+native ss_open_shop(id);
+/*------------------------------
+ * Open shop menu
+ * ---------------------------
+ * id - ID of a player
+------------------------------*/
+
 native ss_open_payment_method_menu(id);
 /*------------------------------
- * Continues shopping process. Function can be called if SS_STOP was returned in ss_service_chosen function.
+ * Continue shopping process. Function can be called if SS_STOP was returned in ss_service_chosen function.
  * ---------------------------
  * id - ID of a player making a purchase
 ------------------------------*/

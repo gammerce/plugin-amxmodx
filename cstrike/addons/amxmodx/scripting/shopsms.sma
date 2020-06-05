@@ -166,8 +166,9 @@ public plugin_natives()
 {
 	register_library("shopsms");
 	register_native("ss_register_service", "native_registerService");
-	register_native("ss_show_service_purchase", "native_showServicePurchase");
+	register_native("ss_open_shop", "native_openShopMenu");
 	register_native("ss_open_payment_method_menu", "native_openPaymentMethodMenu");
+	register_native("ss_show_service_purchase", "native_showServicePurchase");
 	register_native("ss_log", "native_addLog");
 	register_native("ss_is_steam", "native_is_steam");
 }
@@ -2208,19 +2209,19 @@ runRequestCallback(const function[], const httpResponseContent[], playerId, CURL
 //
  
 public native_registerService(plugin, params)
-{	
+{
 	if (params != 1) {
 		_log("An error occurred while registering the service. Invalid number of arguments passed to the ss_register_service function.");
 		return SS_BAD_ARGS;
 	}
-		
+
 	new id[MAX_SERVICE_ID + 1];
-	
+
 	get_string(1, id, charsmax(id));
-	
+
 	ArrayPushCell(service_plugins, plugin);
 	ArrayPushString(service_ids, id);
-	
+
 	return SS_OK;
 }
 
@@ -2235,31 +2236,41 @@ public native_showServicePurchase(plugin, params)
 	if (params != 2) {
 		return SS_BAD_ARGS;
 	}
-	
+
 	new service_id[MAX_SERVICE_ID + 1];
 	new id = get_param(1);
 	get_string(2, service_id, charsmax(service_id));
-	
+
 	_openPricingMenu(id, _getServiceByID(service_id));
 	return SS_OK;
 }
 
-public native_openPaymentMethodMenu(plugin, params)
-{	
+public native_openShopMenu(plugin, params)
+{
 	if (params != 1) {
 		return SS_BAD_ARGS;
 	}
-	
+
+	_openShopMenu(get_param(1));
+	return SS_OK;
+}
+
+public native_openPaymentMethodMenu(plugin, params)
+{
+	if (params != 1) {
+		return SS_BAD_ARGS;
+	}
+
 	_openPaymentMethodMenu(get_param(1));
 	return SS_OK;
 }
 
 public bool:native_is_steam(plugin, params)
-{	
+{
 	if (params != 1) {
 		return false;
 	}
-	
+
 	return is_steam(get_param(1));
 }
 
