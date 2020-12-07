@@ -1407,7 +1407,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		);
 		vc_md5(sign_body, sign);
 
-		formatex(header, charsmax(header), "Authorization: %s", steam_id);
+		formatex(header, charsmax(header), "Authorization: Bearer %s", steam_id);
 		headers = curl_slist_append(headers, header);
 		headers = curl_slist_append(headers, "Accept: application/assoc");
 		
@@ -1746,7 +1746,7 @@ _validateLicense()
 		StringURLEncode(g_serverName, serverNameEscaped, charsmax(serverNameEscaped));
 
 		formatex(header, charsmax(header),
-			"Authorization: %s",
+			"Authorization: Bearer %s",
 			g_licenseToken
 		);
 		headers = curl_slist_append(headers, header);
