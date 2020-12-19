@@ -1,0 +1,26 @@
+name: Compile plugins on PR
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+jobs:
+  main:
+    name: Compile plugins
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - amxx_version: "1.8.2"
+          - amxx_version: "1.8.3-git5201"
+          - amxx_version: "1.9.0-git5241"
+          - amxx_version: "1.10.0-git5392"
+    steps:
+      -
+        name: Check out the repo
+        uses: actions/checkout@v2
+      -
+        name: Compile plugins
+        run: ./build.sh ${{ matrix.amxx_version }} test
