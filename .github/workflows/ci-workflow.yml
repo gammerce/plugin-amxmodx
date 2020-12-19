@@ -23,4 +23,4 @@ jobs:
         uses: actions/checkout@v2
       -
         name: Compile plugins
-        run: ./ci.sh ${{ matrix.amxx_version }} test
+        run: ./build.sh ${{ matrix.amxx_version }} test

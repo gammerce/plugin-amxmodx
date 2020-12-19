@@ -16,14 +16,12 @@ mkdir -p "$DIR/plugins"
 chmod 777 "$DIR/plugins"
 rm -f $DIR/plugins/*
 
-docker run \
-    --rm \
-    -it \
+docker run --rm \
     -v "$DIR/plugins":/home/builder/builds \
     -v "$DIR/scripting":/home/builder/sources \
     -v "$DIR/scripting/include/colorchat.inc":/home/builder/addons/amxmodx/scripting/include/colorchat.inc \
     -v "$DIR/scripting/include/custom_color_chat.inc":/home/builder/addons/amxmodx/scripting/include/custom_color_chat.inc \
     -v "$DIR/scripting/include/shopsms_const.inc":/home/builder/addons/amxmodx/scripting/include/shopsms_const.inc \
     -v "$DIR/scripting/include/shopsms.inc":/home/builder/addons/amxmodx/scripting/include/shopsms.inc \
-    "budziam/amxx-builder:${BUILD_VERSION}" \
+    budziam/amxx-builder:${BUILD_VERSION} \
     ${MODE}
