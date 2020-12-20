@@ -14,9 +14,9 @@ jobs:
       matrix:
         include:
           - amxx_version: "1.8.2"
-          - amxx_version: "1.8.3-git5201"
-          - amxx_version: "1.9.0-git5241"
-          - amxx_version: "1.10.0-git5392"
+          - amxx_version: "1.8.3"
+          - amxx_version: "1.9.0"
+          - amxx_version: "1.10.0"
     steps:
       -
         name: Check out the repo

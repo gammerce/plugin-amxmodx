@@ -23,5 +23,5 @@ docker run --rm \
     -v "$DIR/scripting/include/custom_color_chat.inc":/home/builder/addons/amxmodx/scripting/include/custom_color_chat.inc \
     -v "$DIR/scripting/include/shopsms_const.inc":/home/builder/addons/amxmodx/scripting/include/shopsms_const.inc \
     -v "$DIR/scripting/include/shopsms.inc":/home/builder/addons/amxmodx/scripting/include/shopsms.inc \
-    budziam/amxx-builder:${BUILD_VERSION} \
+    budziam/amxmodx-builder:${BUILD_VERSION} \
     ${MODE}
