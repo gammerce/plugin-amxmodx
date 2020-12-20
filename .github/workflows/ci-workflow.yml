@@ -1,4 +1,4 @@
-name: Compile plugins on PR
+name: Compile plugins
 on:
   push:
     branches:
