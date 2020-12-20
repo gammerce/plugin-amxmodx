@@ -1,4 +1,4 @@
-# [Sklep SMS](https://sklep-sms.pl/) [![Release](https://img.shields.io/github/v/release/gammerce/plugin-amxmodx)](https://github.com/gammerce/plugin-amxmodx/releases/latest)
+# [Sklep SMS](https://sklep-sms.pl/) ![Build](https://github.com/gammerce/plugin-amxmodx/workflows/Compile%20plugins/badge.svg) [![Release](https://img.shields.io/github/v/release/gammerce/plugin-amxmodx)](https://github.com/gammerce/plugin-amxmodx/releases/latest)
 
 AMX Mod X plugin that allows players to make purchases using Sklep-SMS. 
 
