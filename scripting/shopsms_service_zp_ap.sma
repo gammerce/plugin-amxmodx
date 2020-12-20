@@ -1,5 +1,7 @@
 #include <amxmodx>
 #include <shopsms>
+
+// https://forums.alliedmods.net/showthread.php?t=72505?t=72505
 native zp_get_user_ammo_packs(id);
 native zp_set_user_ammo_packs(id, amount);
 

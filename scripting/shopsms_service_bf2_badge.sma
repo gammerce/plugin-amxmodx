@@ -1,6 +1,9 @@
 #include <amxmodx>
 #include <shopsms>
 
+// https://amxx.pl/topic/52743-battlefield-2-v200/
+// https://github.com/gammerce/plugin-amxmodx/wiki/Dodanie-us%C5%82ugi-BF2:-Odznaki
+
 native bf2_get_maxbadges();
 native bf2_get_badge_name(badge_id, badge_level, name[], len);
 native bf2_get_user_badge(index, badge_id);
