@@ -3,7 +3,7 @@
 set -e
 
 if [ "$#" -lt 1 ]; then
-    echo "Usage: ./ci.sh <version> <mode>"
+    echo "Usage: ./build.sh <version> <mode>"
     exit 1
 fi
 
