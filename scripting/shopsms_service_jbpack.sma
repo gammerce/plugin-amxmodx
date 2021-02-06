@@ -1,16 +1,16 @@
 #include <amxmodx>
 #include <shopsms>
 
-// https://forums.alliedmods.net/showthread.php?t=72505?t=72505
-native zp_get_user_ammo_packs(id);
-native zp_set_user_ammo_packs(id, amount);
+// https://amxx.pl/topic/127942-jailbreak-pack-shop/
+native get_user_jbpack(id);
+native set_user_jbpack(id, wartosc);
 
 #pragma semicolon 1
 
-#define PLUGIN "Shop SMS: ZP AP"
+#define PLUGIN "Shop SMS: JB Pack"
 #define AUTHOR "SeeK"
 
-new const service_id[MAX_SERVICE_ID + 1] = "zp_ap";
+new const service_id[MAX_SERVICE_ID + 1] = "jb_pack";
 
 public plugin_natives()
 {
@@ -29,7 +29,7 @@ public plugin_cfg()
 
 public ss_service_bought(id, amount)
 {
-	zp_set_user_ammo_packs(id, zp_get_user_ammo_packs(id) + amount);
+	set_user_jbpack(id, get_user_jbpack(id) + amount);
 }
 
 public native_filter(const native_name[], index, trap)
