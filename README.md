@@ -23,6 +23,7 @@ AMX Mod X plugin that allows players to make purchases using Sklep-SMS.
 * ZP: Bezlitosne monety
 * ZP: Ammo Packs
 * BF2: Odznaki ( code edition required ) - [Manual](https://github.com/gammerce/plugin-amxmodx/wiki/Dodanie-us%C5%82ugi-BF2:-Odznaki)
+* JB pack - [Link](https://amxx.pl/topic/127942-jailbreak-pack-shop/)
 
 ## Chat commands
 
