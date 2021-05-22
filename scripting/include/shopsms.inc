@@ -36,6 +36,14 @@ native ss_show_service_purchase(id, const service_id[]);
  * service_id[] - ID of a service to be shown
 ------------------------------*/
 
+native ss_get_flag_expiration(id, flag);
+/*------------------------------
+ * Returns player's flag expiration timestamp. Returns 0 when a player doesn't have a given flag.
+ * ---------------------------
+ * id - ID of a player
+ * flag - ID of a flag
+------------------------------*/
+
 native ss_log(const message[], any:...);
 /*------------------------------
  * Log info to the shop server logs
