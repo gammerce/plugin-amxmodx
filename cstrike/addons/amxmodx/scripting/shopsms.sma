@@ -49,7 +49,6 @@ const MAX_FULL_IP = MAX_IP + MAX_PORT + 1; // ip + semicolon + port
 const MAX_URL_HOST = 128;
 const MAX_URL_PATH = 384;
 const MAX_URL = MAX_URL_HOST + MAX_URL_PATH;
-const MAX_HEADER = 128;
 const MAX_BODY = 384;
 const MAX_FUNCTION = 128;
 const MAX_CONFIG_KEY = 64;
@@ -95,7 +94,7 @@ new g_currency[16],
 	g_smsText[MAX_SMS_TEXT + 1],
 	Float:g_vat,
 	Trie:g_accountsSteamIds,
-	g_licenseToken[63];
+	g_licenseToken[512 + 1];
 
 // License
 new bool:g_footer = true,
@@ -1365,7 +1364,7 @@ _purchaseService(id, const method[], const sms_code[] = "") {
 		new u_service_id[MAX_SERVICE_ID * 2 + 1], u_auth_data[64 + 1], u_password[MAX_PASSWORD * 2 + 1], u_sms_code[MAX_CODE * 2 + 1];
 		
 		new sign[34], sign_body[1 + charsmax(auth_data) + MAX_CODE + MAX_SHOP_TOKEN + 1];
-		new header[MAX_HEADER + 1];
+		new header[128 + 1];
 
 		new shop_url[MAX_URL + 1], shop_token[MAX_SHOP_TOKEN + 1];
 
@@ -1737,19 +1736,19 @@ _createShopSmsConfigFile()
 _validateLicense()
 {
 	new curl_slist: headers;
-	new header[MAX_HEADER + 1];
 	new body[MAX_BODY + 1];
 	
 	{
+		new headerAuthorization[512 + 1];
 		new serverNameEscaped[MAX_SERVER_NAME * 2 + 1];
 		get_cvar_string("hostname", g_serverName, charsmax(g_serverName));
 		StringURLEncode(g_serverName, serverNameEscaped, charsmax(serverNameEscaped));
 
-		formatex(header, charsmax(header),
+		formatex(headerAuthorization, charsmax(headerAuthorization),
 			"Authorization: Bearer %s",
 			g_licenseToken
 		);
-		headers = curl_slist_append(headers, header);
+		headers = curl_slist_append(headers, headerAuthorization);
 		headers = curl_slist_append(headers, "Accept: application/assoc");
 
 		formatex(body, charsmax(body),
