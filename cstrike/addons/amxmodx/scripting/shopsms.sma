@@ -957,7 +957,7 @@ _openShopMenu(id)
 		return;
 	}
 
-	new menu_title[64];
+	new menu_title[256];
 	if (g_footer) {
 		formatex(menu_title, charsmax(menu_title), "\r%L\d powered by\w sklep-sms.pl^n\y%L", id, "SHOP_SMS", id, "CHOOSE_SERVICE");
 	} else {
@@ -1027,7 +1027,7 @@ _openPricingMenu(id, service_id)
 	}
 
 	new service[e_Service];
-	new szText[128], data[3];
+	new szText[256], data[3];
 
 	ArrayGetArray(g_services, service_id, service);
 	
