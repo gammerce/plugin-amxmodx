@@ -93,7 +93,6 @@ new g_currency[16],
 	g_contact[MAX_CONTACT + 1],
 	g_smsText[MAX_SMS_TEXT + 1],
 	Float:g_vat,
-	Trie:g_accountsSteamIds,
 	g_licenseToken[512 + 1];
 
 // License
@@ -202,7 +201,6 @@ public plugin_precache()
 	g_shopCommands = TrieCreate();
 	g_serviceListCommands = TrieCreate();
 	g_reloadCommands = TrieCreate();
-	g_accountsSteamIds = TrieCreate();
 }
 
 public plugin_init()
@@ -274,7 +272,6 @@ public plugin_end()
 	TrieDestroy(g_shopCommands);
 	TrieDestroy(g_serviceListCommands);
 	TrieDestroy(g_reloadCommands);
-	TrieDestroy(g_accountsSteamIds);
 }
 
 _loadCvars()
@@ -404,22 +401,6 @@ public onLoadServerConfigResponse(const content[], CURLcode: code, statusCode, p
 	TrieGetString(dict, "currency", g_currency, charsmax(g_currency));
 	TrieGetString(dict, "contact", g_contact, charsmax(g_contact));
 	TrieGetTextFloat(dict, "vat", g_vat);
-
-	TrieGetString(dict, "steam_ids", g_szTemp, charsmax(g_szTemp));
-
-	TrieClear(g_accountsSteamIds);
-	new cur_len = 0, max_len = strlen(g_szTemp);
-	while (cur_len < max_len)
-	{
-		new steam_id[MAX_SID + 1];
-		cur_len += copyc(steam_id, charsmax(steam_id), g_szTemp[cur_len], ';') + 1;
-		strtolower(steam_id);
-		trim(steam_id);
-
-		if (strlen(steam_id)) {
-			TrieSetCell(g_accountsSteamIds, steam_id, 1);
-		}
-	}
 	
 	_extractSmsNumbers(dict);
 	_extractPrices(dict);
@@ -1244,7 +1225,7 @@ public paymentMethodMenu_callback(id, menu, item)
 			return ITEM_ENABLED;
 		}
 		case 1: {
-			return _canPayWithWallet(id) ? ITEM_ENABLED : ITEM_DISABLED;
+			return ITEM_ENABLED;
 		}
 	}
 
@@ -1933,28 +1914,6 @@ _getPriceQuantity(price_index, service_index, player_id, output[], len)
 _canUseShop()
 {
 	return !g_blocked && g_licenseValidated && get_pcvar_num(g_cvarOn);
-}
-
-_canPayWithWallet(id)
-{
-	new steam_id[MAX_SID + 1];
-
-	get_user_authid(id, steam_id, charsmax(steam_id));
-	strtolower(steam_id);
-
-	if (TrieKeyExists(g_accountsSteamIds, steam_id)) {
-		return true;
-	}
-
-	// CSGO uses different steamid prefix. STEAM_1 instead of STEAM_0.
-	// We want to check against it as well.
-	replace(steam_id, charsmax(steam_id), "steam_1", "steam_0");
-	if (TrieKeyExists(g_accountsSteamIds, steam_id)) {
-		return true;
-	}
-
-	replace(steam_id, charsmax(steam_id), "steam_0", "steam_1");
-	return TrieKeyExists(g_accountsSteamIds, steam_id);
 }
 
 _getShopCommand(output[], len)
