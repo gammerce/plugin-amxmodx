@@ -12,13 +12,15 @@ DIRECTORY=$(cd `dirname $0` && pwd)
 declare -A BASE_VERSIONS=(
 	["1.8.2"]="https://www.amxmodx.org/release/amxmodx-1.8.2-base-linux.tar.gz"
 	["1.8.3"]="https://www.amxmodx.org/amxxdrop/1.8/amxmodx-1.8.3-dev-git5201-base-linux.tar.gz"
-	["1.9.0"]="https://www.amxmodx.org/amxxdrop/1.9/amxmodx-1.9.0-git5241-base-linux.tar.gz"
+	["1.9.0"]="https://www.amxmodx.org/amxxdrop/1.9/amxmodx-1.9.0-git5294-base-linux.tar.gz"
+	["1.10.0"]="https://www.amxmodx.org/amxxdrop/1.10/amxmodx-1.10.0-git5465-base-linux.tar.gz"
 )
 
 declare -A CSTRKE_VERSIONS=(
 	["1.8.2"]="https://www.amxmodx.org/release/amxmodx-1.8.2-cstrike-linux.tar.gz"
 	["1.8.3"]="https://www.amxmodx.org/amxxdrop/1.8/amxmodx-1.8.3-dev-git5201-cstrike-linux.tar.gz"
-	["1.9.0"]="https://www.amxmodx.org/amxxdrop/1.9/amxmodx-1.9.0-git5241-cstrike-linux.tar.gz"
+	["1.9.0"]="https://www.amxmodx.org/amxxdrop/1.9/amxmodx-1.9.0-git5294-cstrike-linux.tar.gz"
+	["1.10.0"]="https://www.amxmodx.org/amxxdrop/1.10/amxmodx-1.10.0-git5465-cstrike-linux.tar.gz"
 )
 
 BUILD_VERSION=$1
