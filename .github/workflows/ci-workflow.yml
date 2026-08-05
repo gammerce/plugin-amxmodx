@@ -24,7 +24,7 @@ jobs:
     steps:
       -
         name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       -
         name: Compile plugins
         run: ./build.sh ${{ matrix.amxx_version }} test
@@ -33,7 +33,7 @@ jobs:
         run: ./package.sh ${{ matrix.amxx_version }}
       -
         name: Archive build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: artifacts-${{ matrix.amxx_version }}
           path: out
@@ -48,7 +48,7 @@ jobs:
     steps:
       -
         name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: artifacts-*
           merge-multiple: true
