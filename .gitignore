@@ -1,2 +1,3 @@
 .idea
-plugins
+cstrike/addons/amxmodx/plugins
+server/storage

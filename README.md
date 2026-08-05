@@ -55,3 +55,23 @@ Should the above commands be visible on the chat after usage.
 
 #### shopsms_commercial "137"
 How often (seconds) should the shop commercial be displayed on the chat? 0 - never
+
+## Build
+
+The repository contains the full plugin source: the shop engine (`shopsms.sma`) and all service modules. Requires Docker and the `budziam/amxmodx-builder` image.
+
+```bash
+./build.sh 1.10.0   # compiles everything into cstrike/addons/amxmodx/plugins/
+./package.sh 1.10.0 # produces out/amxmodx-1.10.0.zip (full cstrike/ tree, sources included)
+```
+
+Supported compiler versions: 1.8.2, 1.8.3, 1.9.0, 1.10.0.
+
+## Test server
+
+A runnable CS 1.6 test server (Docker HLDS + Metamod + AMX Mod X) lives in `server/`:
+
+```bash
+./build.sh 1.10.0
+./server/run.sh 1.10.0
+```
